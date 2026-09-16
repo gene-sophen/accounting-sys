@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>smoke</title>
+<link rel="stylesheet" href="../css/style.css">
+<script>
+window.__errors = [];
+window.onerror = function (m, s, l) { window.__errors.push(m + ' @' + s + ':' + l); };
+window.addEventListener('unhandledrejection', function (e) {
+  window.__errors.push('unhandledrejection: ' + (e.reason && e.reason.message || e.reason));
+});
+</script>
+</head>
+<body>
+<main id="main">
+  <section class="page" id="page-entries"></section>
+  <section class="page" id="page-add"></section>
+  <section class="page" id="page-stmt"></section>
+</main>
+<nav id="tabbar">
+  <button class="tab-btn active" data-tab="entries" type="button">账目</button>
+  <button class="tab-btn" data-tab="add" type="button">记一笔</button>
+  <button class="tab-btn" data-tab="stmt" type="button">对账单</button>
+</nav>
+<script src="../vendor/html2canvas.min.js"></script>
+<script src="../vendor/jspdf.umd.min.js"></script>
+<script src="../js/money.js"></script>
+<script src="../js/db.js"></script>
+<script src="../js/ui.js"></script>
+<script src="../js/page-entries.js"></script>
+<script src="../js/page-add.js"></script>
+<script src="../js/page-statement.js"></script>
+<script src="../js/app.js"></script>
+<pre id="result">PENDING</pre>
+<script>
+function report(obj) {
+  document.getElementById('result').textContent = 'SMOKE:' + JSON.stringify(obj);
+}
+function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+window.addEventListener('load', function () {
+  wait(800).then(function () {
+    var out = { errors: window.__errors, checks: {} };
+    var C = out.checks;
+    C.libsLoaded = !!(window.html2canvas && window.jspdf && window.jspdf.jsPDF);
+    C.tabRendered = document.querySelectorAll('.tab-btn').length === 3;
+    C.newSetCardShown = !!document.querySelector('.set-card-add');
+
+    // 建一个账单集 + 3 条流水，走完整数据链路
+    var setId;
+    return DB.addSet('冒烟测试工地').then(function (id) {
+      setId = id;
+      return App.selectSet(id);
+    }).then(function () {
+      return DB.addEntry({ set_id: setId, date: '2026-07-01', vehicle: '3号挖机', qty_ml: 663000, price_fen: 690, note: '' });
+    }).then(function () {
+      return DB.addEntry({ set_id: setId, date: '2026-07-02', vehicle: '5号挖机', qty_ml: 2645570, price_fen: 686, note: '夜' });
+    }).then(function () {
+      return DB.addEntry({ set_id: setId, date: '2026-07-03', vehicle: '3号挖机', qty_ml: 115000, price_fen: 690, note: '' });
+    }).then(function () {
+      return EntriesPage.refresh();
+    }).then(function () {
+      // 通过真实 UI 保存一条空车辆流水（验证车辆非必填）
+      App.showTab('add');
+      return wait(400);
+    }).then(function () {
+      document.getElementById('a-set').value = String(setId);
+      document.getElementById('a-date').value = '2026-07-04';
+      document.getElementById('a-qty').value = '250.5';
+      document.getElementById('a-price').value = '7.00';
+      document.getElementById('a-vehicle').value = '';
+      document.getElementById('a-save').click();
+      return wait(600);
+    }).then(function () {
+      return EntriesPage.refresh();
+    }).then(function () {
+      var cards = document.querySelectorAll('.set-card:not(.set-card-add)');
+      C.setCardCount = cards.length;
+      C.setCardSub = cards.length ? cards[0].querySelector('.set-sub').textContent : '';
+      C.groupHeads = document.querySelectorAll('.group-key').length;
+      C.entryRows = document.querySelectorAll('.entry-row').length;
+      C.emptyVehicleSaved = document.querySelectorAll('.entry-row').length === 4;
+      // 切到对账单，生成流水表
+      App.showTab('stmt');
+      return wait(300);
+    }).then(function () {
+      document.getElementById('s-gen').click();
+      return wait(500);
+    }).then(function () {
+      var paper = document.getElementById('s-paper');
+      C.paperShown = !document.getElementById('s-viewport').hidden;
+      C.docTitle = (paper.querySelector('.doc-title') || {}).textContent;
+      C.docDesc = (paper.querySelector('.doc-desc') || {}).textContent;
+      var tds = paper.querySelectorAll('.stmt-table td');
+      C.dateTableCells = tds.length;
+      var txt = paper.textContent;
+      C.has4574 = txt.indexOf('4574.70') >= 0;
+      C.has264557 = txt.indexOf('2645.57') >= 0;
+      C.dateTableHasEmptyVehicle = txt.indexOf('未填车辆') >= 0;
+      // 切聚合表重新生成
+      var segBtns = document.querySelectorAll('#s-seg .seg-btn');
+      segBtns[1].click();
+      document.getElementById('s-gen').click();
+      return wait(500);
+    }).then(function () {
+      var paper = document.getElementById('s-paper');
+      var txt = paper.textContent;
+      C.aggTotalFen = txt.indexOf(Money.fmtFen(Money.totals([
+        { qty_ml: 663000, price_fen: 690 }, { qty_ml: 2645570, price_fen: 686 },
+        { qty_ml: 115000, price_fen: 690 }, { qty_ml: 250500, price_fen: 700 }
+      ]).fen)) >= 0;
+      C.aggHasTotal = txt.indexOf('合计') >= 0;
+      C.aggHasEmptyVehicle = txt.indexOf('未填车辆') >= 0;
+      // 空车辆组排最后（双栏阅读顺序：左栏自上而下 → 右栏自上而下）
+      var bodyRows = Array.prototype.filter.call(paper.querySelectorAll('.stmt-table tbody tr'), function (tr) {
+        return !tr.classList.contains('total-row');
+      });
+      var seq = [];
+      bodyRows.forEach(function (tr) { seq.push(tr.cells[0].textContent); });
+      bodyRows.forEach(function (tr) { var t = tr.cells[3] && tr.cells[3].textContent; if (t) seq.push(t); });
+      C.aggVehicleSeq = seq.join('|');
+      C.aggEmptySortedLast = seq[seq.length - 1] === '未填车辆';
+      // 合计行结构：colspan=2 × 3
+      var totalCells = paper.querySelectorAll('.total-row td');
+      C.totalRowSpans = Array.prototype.map.call(totalCells, function (td) { return td.colSpan; }).join(',');
+      // 回账目页切按车辆排布，检查组头
+      App.showTab('entries');
+      return wait(400);
+    }).then(function () {
+      var segs = document.querySelectorAll('#seg-wrap .seg-btn');
+      segs[1].click();
+      return wait(400);
+    }).then(function () {
+      var keys = Array.prototype.map.call(document.querySelectorAll('.group-key'), function (el) { return el.textContent; });
+      C.vehicleGroupKeys = keys.join('|');
+      C.emptyGroupLast = keys[keys.length - 1] === '未填车辆';
+      C.errorsAfter = window.__errors;
+      report(out);
+    }).catch(function (err) {
+      out.fatal = String(err && err.stack || err);
+      report(out);
+    });
+  });
+});
+</script>
+</body>
+</html>
