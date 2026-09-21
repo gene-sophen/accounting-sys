@@ -50,13 +50,14 @@
   }
 
   // ---- 通用模态框 ----
-  // content: HTML 字符串；返回 { el, close }，调用方自行绑定内部事件
+  // content: HTML 字符串；opts.bottom=true 时为底部上滑大面板（iOS 设置风格）
+  // 返回 { el, close }，调用方自行绑定内部事件
   function modal(contentHtml, opts) {
     opts = opts || {};
     var overlay = document.createElement('div');
-    overlay.className = 'overlay';
+    overlay.className = 'overlay' + (opts.bottom ? ' overlay-bottom' : '');
     var sheet = document.createElement('div');
-    sheet.className = 'sheet' + (opts.wide ? ' sheet-wide' : '');
+    sheet.className = 'sheet' + (opts.wide ? ' sheet-wide' : '') + (opts.bottom ? ' sheet-bottom' : '');
     sheet.innerHTML = contentHtml;
     overlay.appendChild(sheet);
     document.body.appendChild(overlay);

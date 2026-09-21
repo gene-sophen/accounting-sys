@@ -1,7 +1,7 @@
 /* sw.js —— Service Worker：预缓存 app shell + vendor 库，cache-first
  * 注意：仅预缓存清单内资源走缓存，其余请求直连网络（避免旧文件长期滞留）。
  * 更新应用文件后须 bump CACHE 版本号，旧缓存才会被清除。 */
-var CACHE = 'accounting-v3';
+var CACHE = 'accounting-v4';
 var ASSETS = [
   './',
   './index.html',

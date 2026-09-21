@@ -79,7 +79,10 @@
           var st = t.objectStore('entries');
           rows.forEach(function (r) { st.delete(r.id); });
           var sst = t.objectStore('settings');
-          ['layout:' + id, 'format:' + id, 'doc:' + id, 'cols:' + id + ':date', 'cols:' + id + ':vehicle']
+          ['layout:' + id, 'format:' + id, 'doc:' + id,
+           'cols:' + id + ':date', 'cols:' + id + ':vehicle',
+           'sigPos:' + id + ':date', 'sigPos:' + id + ':vehicle',
+           'sigFields:' + id + ':date', 'sigFields:' + id + ':vehicle']
             .forEach(function (k) { sst.delete(k); });
         });
       });

@@ -1,4 +1,5 @@
-/* page-statement.js —— 对账单页：输出格式选择、一键生成、纸张预览、就地编辑、列设置、PDF 导出 */
+/* page-statement.js —— 对账单页：一键生成、纸张预览、就地编辑（标题/说明/落款标签与值）、
+ * 设置面板（输出格式 / 落款位置与开关 / 列设置）、PDF 导出 */
 (function (global) {
   'use strict';
 
@@ -21,21 +22,29 @@
     ]
   };
 
+  // 落款区字段定义：值 key（存 genDoc / 全局记忆）+ 标签 key（按账单集记忆）+ 默认标签
+  var SIG_FIELDS = [
+    { key: 'receiver', labelKey: 'labelReceiver', defLabel: '收货方代理人', global: 'receiver' },
+    { key: 'supplier', labelKey: 'labelSupplier', defLabel: '供货方', global: 'supplier' },
+    { key: 'issueDate', labelKey: 'labelIssueDate', defLabel: '出单日期', global: null }
+  ];
+
   var root = null, els = {};
-  var fmt = 'date';            // 当前输出格式
+  var fmt = 'date';            // 当前输出格式（按账单集记忆）
+  var sigPos = 'below';        // 落款位置（按 集+格式 记忆）
+  var sigFields = { receiver: true, supplier: true, issueDate: true }; // 落款显示开关（按 集+格式 记忆）
   var genEntries = null;       // 当前生成所用数据
   var genCols = null;          // 当前列配置
-  var genDoc = null;           // 当前文书内容
+  var genDoc = null;           // 当前文书内容（含落款标签与值）
 
   function render(container) {
     root = container;
     root.innerHTML =
       '<div class="form-card">' +
         '<label class="form-label">选择账单集</label><select class="text-input" id="s-set"></select>' +
-        '<label class="form-label">输出格式</label><div id="s-seg"></div>' +
         '<div class="gen-btns">' +
           '<button class="btn btn-primary btn-grow" id="s-gen">一键生成对账单</button>' +
-          '<button class="btn btn-plain" id="s-cols">列设置</button>' +
+          '<button class="btn btn-plain" id="s-settings">设置</button>' +
         '</div>' +
       '</div>' +
       '<div class="paper-viewport" id="s-viewport" hidden>' +
@@ -48,9 +57,8 @@
       '<div class="empty-hint" id="s-empty"></div>';
     els = {
       set: root.querySelector('#s-set'),
-      seg: root.querySelector('#s-seg'),
       gen: root.querySelector('#s-gen'),
-      cols: root.querySelector('#s-cols'),
+      settings: root.querySelector('#s-settings'),
       viewport: root.querySelector('#s-viewport'),
       paper: root.querySelector('#s-paper'),
       exportWrap: root.querySelector('#s-export-wrap'),
@@ -58,12 +66,39 @@
       empty: root.querySelector('#s-empty')
     };
     els.gen.addEventListener('click', generate);
-    els.cols.addEventListener('click', openColSettings);
+    els.settings.addEventListener('click', openSettings);
     els.exportBtn.addEventListener('click', exportPdf);
     els.set.addEventListener('change', function () {
-      global.App.selectSet(parseInt(els.set.value, 10)).then(onShow);
+      global.App.selectSet(parseInt(els.set.value, 10)).then(function () {
+        hidePaper();
+        onShow();
+      });
     });
     window.addEventListener('resize', fitPaper);
+  }
+
+  // ---- 设置读写（键：format:{setId} / sigPos:{setId}:{fmt} / sigFields:{setId}:{fmt} / cols:{setId}:{fmt}）----
+  function sigPosKey() { return 'sigPos:' + global.App.state.currentSetId + ':' + fmt; }
+  function sigFieldsKey() { return 'sigFields:' + global.App.state.currentSetId + ':' + fmt; }
+
+  function loadLayoutPrefs() {
+    var setId = global.App.state.currentSetId;
+    return DB.getSetting('format:' + setId).then(function (saved) {
+      fmt = saved === 'vehicle' ? 'vehicle' : 'date';
+      return loadSigPrefs();
+    });
+  }
+  // 落款两个键跟随「集+格式」，fmt 确定后读取
+  function loadSigPrefs() {
+    return Promise.all([DB.getSetting(sigPosKey()), DB.getSetting(sigFieldsKey())]).then(function (rs) {
+      sigPos = rs[0] === 'above' ? 'above' : 'below';
+      var sf = rs[1];
+      sigFields = {
+        receiver: !sf || sf.receiver !== false,
+        supplier: !sf || sf.supplier !== false,
+        issueDate: !sf || sf.issueDate !== false
+      };
+    });
   }
 
   function onShow() {
@@ -74,29 +109,12 @@
       }).join('');
       if (!st.sets.length) {
         els.empty.textContent = '还没有账单集，请先到「账目」页新建';
-        els.seg.innerHTML = '';
         hidePaper();
         return;
       }
       els.empty.textContent = '';
-      return DB.getSetting('format:' + st.currentSetId).then(function (saved) {
-        fmt = saved === 'vehicle' ? 'vehicle' : 'date';
-        renderSeg();
-      });
+      return loadLayoutPrefs();
     });
-  }
-
-  function renderSeg() {
-    els.seg.innerHTML = '';
-    els.seg.appendChild(U.segmented(
-      [{ value: 'date', label: '按日期流水表' }, { value: 'vehicle', label: '按车辆聚合表' }],
-      fmt,
-      function (v) {
-        fmt = v;
-        DB.setSetting('format:' + global.App.state.currentSetId, v);
-        hidePaper();
-      }
-    ));
   }
 
   function hidePaper() {
@@ -130,9 +148,10 @@
       DB.listEntries(setId),
       loadCols(),
       DB.getSetting('doc:' + setId),
-      DB.getSetting('supplier')
+      DB.getSetting('supplier'),
+      DB.getSetting('receiver')
     ]).then(function (rs) {
-      var entries = rs[0], cols = rs[1], doc = rs[2] || {}, supplierG = rs[3];
+      var entries = rs[0], cols = rs[1], doc = rs[2] || {}, supplierG = rs[3], receiverG = rs[4];
       if (!entries.length) { U.toast('该账单集暂无流水'); hidePaper(); return; }
       var setName = (st.sets.filter(function (s) { return s.id === setId; })[0] || {}).name || '';
       var t = M.totals(entries);
@@ -147,7 +166,11 @@
         desc: doc.desc != null ? doc.desc
           : setName + '，' + rangeText + '，共加注柴油 ' + M.fmtMl(t.ml) + ' 升，合计 ' + M.fmtFen(t.fen) + ' 元。',
         supplier: doc.supplier != null ? doc.supplier : (supplierG || ''),
-        issueDate: doc.issueDate != null ? doc.issueDate : U.longDate(U.todayStr())
+        receiver: doc.receiver != null ? doc.receiver : (receiverG || ''),
+        issueDate: doc.issueDate != null ? doc.issueDate : U.longDate(U.todayStr()),
+        labelReceiver: doc.labelReceiver != null ? doc.labelReceiver : '收货方代理人',
+        labelSupplier: doc.labelSupplier != null ? doc.labelSupplier : '供货方',
+        labelIssueDate: doc.labelIssueDate != null ? doc.labelIssueDate : '出单日期'
       };
       renderPaper();
     });
@@ -159,16 +182,56 @@
       U.esc(text) + '</' + tag + '>';
   }
 
+  function sigFieldHtml(f) {
+    return '<span class="sig-field">' +
+      editable('sig-label', f.labelKey, genDoc[f.labelKey], 'span') +
+      '<span class="sig-colon">：</span>' +
+      editable('sig-value', f.key, genDoc[f.key], 'span') +
+      '</span>';
+  }
+
+  function visibleSigFields() {
+    return SIG_FIELDS.filter(function (f) { return sigFields[f.key]; });
+  }
+
+  // 落款区 · 表格上方：右对齐块（原版式，带新字段与可编辑标签）
+  function sigAboveHtml() {
+    var vis = visibleSigFields();
+    if (!vis.length) return '';
+    return '<div class="doc-meta">' + vis.map(function (f) {
+      return '<div class="doc-meta-row">' + sigFieldHtml(f) + '</div>';
+    }).join('') + '</div>';
+  }
+
+  // 落款区 · 表格下方（新默认）：第一行 左收货方代理人 右供货方，第二行 右出单日期；隐藏字段自动补位
+  function sigBelowHtml() {
+    var vis = visibleSigFields();
+    if (!vis.length) return '';
+    var fR = null, fS = null, fD = null;
+    vis.forEach(function (f) {
+      if (f.key === 'receiver') fR = f;
+      else if (f.key === 'supplier') fS = f;
+      else fD = f;
+    });
+    var html = '<div class="doc-sig">';
+    if (fR || fS) {
+      html += '<div class="doc-sig-row">' +
+        (fR ? sigFieldHtml(fR) : '<span></span>') +
+        (fS ? sigFieldHtml(fS) : '') +
+        '</div>';
+    }
+    if (fD) html += '<div class="doc-sig-row doc-sig-row-end">' + sigFieldHtml(fD) + '</div>';
+    return html + '</div>';
+  }
+
   function renderPaper() {
     var p = els.paper;
     p.innerHTML =
       editable('doc-title', 'title', genDoc.title, 'div') +
       editable('doc-desc', 'desc', genDoc.desc, 'div') +
-      '<div class="doc-meta">' +
-        '<div class="doc-meta-row">供方：' + editable('doc-inline', 'supplier', genDoc.supplier, 'span') + '</div>' +
-        '<div class="doc-meta-row">出单日期：' + editable('doc-inline', 'issueDate', genDoc.issueDate, 'span') + '</div>' +
-      '</div>' +
-      (fmt === 'date' ? tableDate() : tableVehicle());
+      (sigPos === 'above' ? sigAboveHtml() : '') +
+      (fmt === 'date' ? tableDate() : tableVehicle()) +
+      (sigPos === 'below' ? sigBelowHtml() : '');
 
     bindEditable(p);
     var table = p.querySelector('table');
@@ -189,7 +252,9 @@
         genDoc[key] = val;
         var setId = global.App.state.currentSetId;
         DB.setSetting('doc:' + setId, genDoc);
-        if (key === 'supplier' && val) DB.setSetting('supplier', val); // 供方全局记忆
+        // 供货方 / 收货方代理人的值首次填写后全局记忆
+        if (key === 'supplier' && val) DB.setSetting('supplier', val);
+        if (key === 'receiver' && val) DB.setSetting('receiver', val);
       });
       el.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' && el.getAttribute('data-doc') !== 'desc') {
@@ -324,18 +389,88 @@
     els.viewport.style.height = (p.offsetHeight * scale) + 'px';
   }
 
-  // ---- 列设置弹窗 ----
-  function openColSettings() {
+  // ---- 设置面板（底部上滑，iOS 分组列表风格：输出格式 / 落款 / 列）----
+  function openSettings() {
     if (!global.App.state.sets.length) { U.toast('请先新建账单集'); return; }
+    var setId = global.App.state.currentSetId;
     loadCols().then(function (cols) {
       var m = U.modal(
-        '<div class="sheet-title">列设置（' + (fmt === 'date' ? '按日期流水表' : '按车辆聚合表') + '）</div>' +
-        '<div class="col-list" id="col-list"></div>' +
-        '<div class="sheet-btns"><button class="btn btn-primary btn-block" data-act="done">完成</button></div>');
-      var listEl = m.el.querySelector('#col-list');
+        '<div class="sheet-title">设置</div>' +
+        '<div class="settings-group-title">输出格式</div>' +
+        '<div class="settings-card"><div id="panel-fmt"></div></div>' +
+        '<div class="settings-group-title">落款</div>' +
+        '<div class="settings-card">' +
+          '<div class="settings-row"><span class="settings-label">位置</span><span id="panel-sigpos" class="settings-seg"></span></div>' +
+          '<div class="settings-row"><span class="settings-label">收货方代理人</span>' +
+            '<label class="ios-switch"><input type="checkbox" id="sf-receiver"' + (sigFields.receiver ? ' checked' : '') + '><i></i></label></div>' +
+          '<div class="settings-row"><span class="settings-label">供货方</span>' +
+            '<label class="ios-switch"><input type="checkbox" id="sf-supplier"' + (sigFields.supplier ? ' checked' : '') + '><i></i></label></div>' +
+          '<div class="settings-row"><span class="settings-label">出单日期</span>' +
+            '<label class="ios-switch"><input type="checkbox" id="sf-issueDate"' + (sigFields.issueDate ? ' checked' : '') + '><i></i></label></div>' +
+        '</div>' +
+        '<div class="settings-group-title">列（跟随输出格式）</div>' +
+        '<div class="settings-card"><div class="col-list" id="col-list"></div></div>' +
+        '<button class="btn btn-primary btn-block" data-act="done">完成</button>',
+        { bottom: true });
 
-      function persist() { return DB.setSetting(colsKey(), cols); }
-      function drawList() {
+      function regen() {
+        if (!genEntries) return;
+        genCols = cols;
+        renderPaper();
+      }
+      function regenCols() {
+        if (!cols.some(function (c) { return c.on; })) return; // 至少一列
+        regen();
+      }
+
+      // 分组 1：输出格式（按账单集记忆）
+      m.el.querySelector('#panel-fmt').appendChild(U.segmented(
+        [{ value: 'date', label: '按日期流水表' }, { value: 'vehicle', label: '按车辆聚合表' }],
+        fmt,
+        function (v) {
+          fmt = v;
+          DB.setSetting('format:' + setId, v);
+          // 列方案与落款配置跟随新格式
+          Promise.all([loadCols(), loadSigPrefs()]).then(function (rs) {
+            cols = rs[0];
+            drawCols();
+            drawSig();
+            regen();
+          });
+        }
+      ));
+
+      // 分组 2：落款（位置 + 三个显示开关，按 集+格式 记忆）
+      function drawSig() {
+        var posWrap = m.el.querySelector('#panel-sigpos');
+        posWrap.innerHTML = '';
+        posWrap.appendChild(U.segmented(
+          [{ value: 'below', label: '表格下方' }, { value: 'above', label: '表格上方' }],
+          sigPos,
+          function (v) {
+            sigPos = v;
+            DB.setSetting(sigPosKey(), v);
+            regen();
+          }
+        ));
+        ['receiver', 'supplier', 'issueDate'].forEach(function (k) {
+          var input = m.el.querySelector('#sf-' + k);
+          input.checked = sigFields[k];
+        });
+      }
+      ['receiver', 'supplier', 'issueDate'].forEach(function (k) {
+        m.el.querySelector('#sf-' + k).addEventListener('change', function (e) {
+          sigFields[k] = e.target.checked;
+          DB.setSetting(sigFieldsKey(), sigFields);
+          regen();
+        });
+      });
+      drawSig();
+
+      // 分组 3：列设置（跟随当前输出格式，按 集+格式 持久化）
+      var listEl = m.el.querySelector('#col-list');
+      function persistCols() { return DB.setSetting(colsKey(), cols); }
+      function drawCols() {
         listEl.innerHTML = '';
         cols.forEach(function (c, i) {
           var row = document.createElement('div');
@@ -347,32 +482,27 @@
             '<button type="button" class="col-move" data-mv="down"' + (i === cols.length - 1 ? ' disabled' : '') + '>↓</button>';
           row.querySelector('input[type=checkbox]').addEventListener('change', function (e) {
             c.on = e.target.checked;
-            persist();
-            regen();
+            persistCols();
+            regenCols();
           });
           row.querySelector('.col-name').addEventListener('change', function (e) {
             var v = e.target.value.trim();
-            if (v) { c.label = v; persist(); regen(); } else e.target.value = c.label;
+            if (v) { c.label = v; persistCols(); regenCols(); } else e.target.value = c.label;
           });
           row.querySelectorAll('.col-move').forEach(function (b) {
             b.addEventListener('click', function () {
               var j = i + (b.getAttribute('data-mv') === 'up' ? -1 : 1);
               var tmp = cols[i]; cols[i] = cols[j]; cols[j] = tmp;
-              persist();
-              drawList();
-              regen();
+              persistCols();
+              drawCols();
+              regenCols();
             });
           });
           listEl.appendChild(row);
         });
       }
-      function regen() {
-        if (!genEntries) return;
-        if (!cols.some(function (c) { return c.on; })) return; // 至少一列
-        genCols = cols;
-        renderPaper();
-      }
-      drawList();
+      drawCols();
+
       m.el.addEventListener('click', function (e) {
         if (e.target.getAttribute('data-act') === 'done') m.close();
       });

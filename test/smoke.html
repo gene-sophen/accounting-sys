@@ -98,12 +98,27 @@ window.addEventListener('load', function () {
       C.has4574 = txt.indexOf('4574.70') >= 0;
       C.has264557 = txt.indexOf('2645.57') >= 0;
       C.dateTableHasEmptyVehicle = txt.indexOf('未填车辆') >= 0;
-      // 切聚合表重新生成
-      var segBtns = document.querySelectorAll('#s-seg .seg-btn');
-      segBtns[1].click();
-      document.getElementById('s-gen').click();
+      // 落款区：默认在表格下方、三个字段齐全、标签可编辑
+      var table = paper.querySelector('table');
+      var sig = paper.querySelector('.doc-sig');
+      C.sigBelowDefault = !!sig && !!(table.compareDocumentPosition(sig) & 4);
+      C.sigThreeFields = !!sig && ['收货方代理人', '供货方', '出单日期'].every(function (s) {
+        return sig.textContent.indexOf(s) >= 0;
+      });
+      var sigLabel = sig && sig.querySelector('.sig-label');
+      C.sigLabelEditable = !!sigLabel && sigLabel.getAttribute('contenteditable') === 'true';
+      // 打开设置面板
+      document.getElementById('s-settings').click();
       return wait(500);
     }).then(function () {
+      C.settingsPanelOpens = !!document.querySelector('.sheet-bottom');
+      C.panelFmtSegs = document.querySelectorAll('#panel-fmt .seg-btn').length === 2;
+      C.panelColsDate = document.querySelectorAll('#col-list .col-row').length === 6;
+      // 面板内切输出格式到聚合表 → 列分组即时变为 3 行，纸张即时重渲染为聚合表
+      document.querySelectorAll('#panel-fmt .seg-btn')[1].click();
+      return wait(600);
+    }).then(function () {
+      C.panelColsVehicle = document.querySelectorAll('#col-list .col-row').length === 3;
       var paper = document.getElementById('s-paper');
       var txt = paper.textContent;
       C.aggTotalFen = txt.indexOf(Money.fmtFen(Money.totals([
@@ -124,7 +139,19 @@ window.addEventListener('load', function () {
       // 合计行结构：colspan=2 × 3
       var totalCells = paper.querySelectorAll('.total-row td');
       C.totalRowSpans = Array.prototype.map.call(totalCells, function (td) { return td.colSpan; }).join(',');
-      // 回账目页切按车辆排布，检查组头
+      // 落款位置切到表格上方
+      document.querySelectorAll('#panel-sigpos .seg-btn')[1].click();
+      return wait(500);
+    }).then(function () {
+      var paper = document.getElementById('s-paper');
+      var table = paper.querySelector('table');
+      var meta = paper.querySelector('.doc-meta');
+      C.sigAbove = !!meta && !!(table.compareDocumentPosition(meta) & 2) && !paper.querySelector('.doc-sig');
+      C.sigAboveThreeFields = !!meta && ['收货方代理人', '供货方', '出单日期'].every(function (s) {
+        return meta.textContent.indexOf(s) >= 0;
+      });
+      // 关闭面板，回账目页切按车辆排布，检查组头
+      document.querySelector('.overlay [data-act=done]').click();
       App.showTab('entries');
       return wait(400);
     }).then(function () {

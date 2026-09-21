@@ -131,27 +131,39 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       })()`, true));
       await evalJs('document.querySelector(\'.tab-btn[data-tab="stmt"]\').click()');
       await sleep(1000);
-      await evalJs('(function(){var b=document.querySelectorAll("#s-seg .seg-btn");if(!b[1].classList.contains("active"))b[1].click();})()');
-      await sleep(300);
+      // 设置面板：切聚合格式，面板本身截图 + 溢出检查
+      await evalJs('document.getElementById("s-settings").click()');
+      await sleep(800);
+      await evalJs('(function(){var b=document.querySelectorAll("#panel-fmt .seg-btn");if(b[1]&&!b[1].classList.contains("active"))b[1].click();})()');
+      await sleep(600);
+      // 落款位置复位到「表格下方」（该集此前可能被冒烟测试记成上方）
+      await evalJs('(function(){var b=document.querySelectorAll("#panel-sigpos .seg-btn");if(b[0]&&!b[0].classList.contains("active"))b[0].click();})()');
+      await sleep(400);
+      console.log('with-settings-panel:', await evalJs(WALK));
+      await shot('test/shot-390-settings.png');
+      await evalJs('document.querySelector(".overlay [data-act=done]").click()');
+      await sleep(400);
+      // 生成（落款默认在表格下方）
       await evalJs('document.getElementById("s-gen").click()');
       await sleep(1500);
       console.log(await evalJs(WALK));
       console.log('paper:', await evalJs('(function(){var v=document.getElementById("s-viewport");var p=document.getElementById("s-paper");return JSON.stringify({hidden:v.hidden, viewportW:v.clientWidth, viewportH:v.style.height, transform:p.style.transform})})()'));
       await shot('test/shot-390-stmt.png');
+      // 落款切到表格上方
+      await evalJs('document.getElementById("s-settings").click()');
+      await sleep(600);
+      await evalJs('(function(){var b=document.querySelectorAll("#panel-sigpos .seg-btn");if(b[1]&&!b[1].classList.contains("active"))b[1].click();})()');
+      await sleep(600);
+      await evalJs('document.querySelector(".overlay [data-act=done]").click()');
+      await sleep(600);
+      console.log('sig-above walk:', await evalJs(WALK));
+      await shot('test/shot-390-stmt-above.png');
       // 账目页按车辆排布（空车辆组排最后）
       await evalJs('document.querySelector(\'.tab-btn[data-tab="entries"]\').click()');
       await sleep(1000);
       await evalJs('(function(){var b=document.querySelectorAll("#seg-wrap .seg-btn");if(b[1]&&!b[1].classList.contains("active"))b[1].click();})()');
       await sleep(800);
       await shot('test/shot-390-vehicle-layout.png');
-      // 顺带：列设置模态框在 390px 下不撑宽页面
-      await evalJs('document.querySelector(\'.tab-btn[data-tab="stmt"]\').click()');
-      await sleep(800);
-      await evalJs('document.getElementById("s-cols").click()');
-      await sleep(800);
-      console.log('with-modal:', await evalJs(WALK));
-      await shot('test/shot-390-modal.png');
-      await evalJs('document.querySelector(".overlay [data-act=done]").click()');
       // 顺带：记一笔页车辆补全下拉
       await evalJs('document.querySelector(\'.tab-btn[data-tab="add"]\').click()');
       await sleep(800);
