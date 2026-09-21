@@ -39,7 +39,7 @@
     var addCard = document.createElement('button');
     addCard.type = 'button';
     addCard.className = 'set-card set-card-add';
-    addCard.innerHTML = '<span class="set-add-plus">＋</span><span>新建账单集</span>';
+    addCard.innerHTML = U.icon('plus') + '<span>新建账单集</span>';
     addCard.addEventListener('click', function () { openSetModal(null); });
     stripEl.appendChild(addCard);
 
@@ -50,7 +50,7 @@
       card.innerHTML =
         '<div class="set-name">' + U.esc(s.name) + '</div>' +
         '<div class="set-sub">' + stat.count + '笔 · ¥' + M.fmtFen(stat.fen) + '</div>' +
-        '<button type="button" class="set-edit" aria-label="编辑">✎</button>';
+        '<button type="button" class="set-edit" aria-label="编辑">' + U.icon('pencil') + '</button>';
       card.addEventListener('click', function () {
         global.App.selectSet(s.id).then(renderStrip).then(renderList);
       });
@@ -115,7 +115,7 @@
       segWrapEl.innerHTML = '';
       listEl.innerHTML = '';
       emptyEl.hidden = false;
-      emptyEl.textContent = '还没有账单集，点左上角「＋ 新建账单集」开始记账';
+      emptyEl.innerHTML = U.icon('inbox') + '<span>还没有账单集，点左上角「新建账单集」开始记账</span>';
       return Promise.resolve();
     }
     return DB.listEntries(st.currentSetId).then(function (entries) {
@@ -166,7 +166,7 @@
     listEl.innerHTML = '';
     if (!entries.length) {
       emptyEl.hidden = false;
-      emptyEl.textContent = '该账单集暂无流水，去「记一笔」添加';
+      emptyEl.innerHTML = U.icon('inbox') + '<span>该账单集暂无流水，去「记一笔」添加</span>';
       return;
     }
     emptyEl.hidden = true;
@@ -236,8 +236,13 @@
       if (!horiz) return;
       ev.preventDefault();
       var base = row.classList.contains('swiped') ? -DELETE_W : 0;
-      dx = Math.max(-DELETE_W, Math.min(0, base + mx)) - base;
-      content.style.transform = 'translateX(' + (base + mx > 0 ? 0 : Math.max(-DELETE_W, base + mx)) + 'px)';
+      var raw = base + mx;
+      dx = raw - base; // 用原始位移判断意图
+      var shown;
+      if (raw > 0) shown = raw * 0.3;                               // 右拉过界：阻尼
+      else if (raw < -DELETE_W) shown = -DELETE_W + (raw + DELETE_W) * 0.3; // 左拉过界：阻尼
+      else shown = raw;
+      content.style.transform = 'translateX(' + shown + 'px)';
     }, { passive: false });
     content.addEventListener('touchend', function () {
       if (!active) return;
@@ -252,6 +257,11 @@
       }
     });
     row.querySelector('.swipe-delete').addEventListener('click', onDelete);
+  }
+
+  function closeOverlay(overlay) {
+    overlay.classList.add('closing');
+    setTimeout(function () { overlay.remove(); }, 200);
   }
 
   // ---- 条目详情（覆盖页）----
@@ -274,12 +284,12 @@
         '<button class="btn btn-primary" data-act="edit">编辑</button>' +
       '</div>';
     document.body.appendChild(overlay);
-    overlay.querySelector('.back-btn').addEventListener('click', function () { overlay.remove(); });
+    overlay.querySelector('.back-btn').addEventListener('click', function () { closeOverlay(overlay); });
     overlay.addEventListener('click', function (ev) {
       var act = ev.target.getAttribute('data-act');
       if (act === 'delete') {
         U.confirm('删除后不可恢复，确认删除？', { danger: true, okText: '删除' }).then(function (ok) {
-          if (ok) DB.deleteEntry(e.id).then(function () { overlay.remove(); refresh(); U.toast('已删除'); });
+          if (ok) DB.deleteEntry(e.id).then(function () { closeOverlay(overlay); refresh(); U.toast('已删除'); });
         });
       } else if (act === 'edit') {
         overlay.remove();
@@ -312,7 +322,7 @@
       '</div>' +
       '<div class="detail-actions"><button class="btn btn-primary btn-block" id="f-save">保存</button></div>';
     document.body.appendChild(overlay);
-    overlay.querySelector('.back-btn').addEventListener('click', function () { overlay.remove(); });
+    overlay.querySelector('.back-btn').addEventListener('click', function () { closeOverlay(overlay); });
 
     var qtyEl = overlay.querySelector('#f-qty');
     var priceEl = overlay.querySelector('#f-price');
@@ -346,7 +356,7 @@
 
       function doSave() {
         DB.updateEntry(updated).then(function () {
-          overlay.remove();
+          closeOverlay(overlay);
           global.App.selectSet(setId).then(refresh);
           U.toast('已保存');
         });
@@ -378,7 +388,7 @@
                 });
               });
               chain.then(function () {
-                m.close(); overlay.remove();
+                m.close(); closeOverlay(overlay);
                 global.App.selectSet(setId).then(refresh);
                 U.toast('已批量替换');
               });

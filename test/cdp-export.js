@@ -41,6 +41,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     sleep(timeoutMs || 30000).then(() => 'TIMEOUT')
   ]);
   await send('Page.enable');
+    await send('Network.enable');
+    await send('Network.setCacheDisabled', { cacheDisabled: true });
   await send('Page.navigate', { url: 'http://127.0.0.1:8765/test/smoke.html' });
   for (let i = 0; i < 60; i++) {
     await sleep(500);
@@ -55,6 +57,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       await DB.addEntry({ set_id: setId, date: '2026-07-' + ('0' + (i % 28 + 1)).slice(-2),
         vehicle: i + '号挖机', qty_ml: 100000 + i * 1370, price_fen: 690, note: '' });
     }
+    App.showTab('stmt');
+    await new Promise(r => setTimeout(r, 500));
     document.getElementById('s-settings').click();
     await new Promise(r => setTimeout(r, 500));
     var seg = document.querySelectorAll('#panel-fmt .seg-btn');
@@ -66,14 +70,18 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     return 'added';
   })()`, true, 30000));
   await sleep(1500);
+  log('paper state:', await evalJs('(function(){var v=document.getElementById("s-viewport");var p=document.getElementById("s-paper");var t=document.getElementById("toast");return JSON.stringify({hidden:v.hidden, h:p.offsetHeight, rows:p.querySelectorAll("tr").length, setVal:document.getElementById("s-set").value, toast:t&&t.textContent});})()'));
   log('paper height:', await evalJs('document.getElementById("s-paper").offsetHeight'));
   // 拦截 save，点真实导出按钮
   log('export:', await evalJs(`(async () => {
     window.__saved = null; navigator.canShare = function(){ return false; }; window.__err=null; window.onerror=function(m){window.__err=m;};
+    var lazyBefore = typeof html2canvas === 'undefined';
+    await Vendor.load();
     jspdf.jsPDF.API.save = function (n) { window.__saved = { name: n, pages: this.getNumberOfPages(), size: this.output('blob').size }; };
     document.getElementById('s-export').click();
+    window.__lazyBefore = lazyBefore;
     for (var i = 0; i < 120; i++) { await new Promise(r => setTimeout(r, 250)); if (window.__saved) break; }
-    return JSON.stringify({ saved: window.__saved, err: window.__err });
+    return JSON.stringify({ saved: window.__saved, err: window.__err, lazyBefore: window.__lazyBefore });
   })()`, true, 60000));
   edge.kill();
   log('done');

@@ -108,11 +108,11 @@
         return '<option value="' + s.id + '"' + (s.id === st.currentSetId ? ' selected' : '') + '>' + U.esc(s.name) + '</option>';
       }).join('');
       if (!st.sets.length) {
-        els.empty.textContent = '还没有账单集，请先到「账目」页新建';
+        els.empty.innerHTML = U.icon('receipt') + '<span>还没有账单集，请先到「账目」页新建</span>';
         hidePaper();
         return;
       }
-      els.empty.textContent = '';
+      els.empty.innerHTML = '';
       return loadLayoutPrefs();
     });
   }
@@ -241,6 +241,11 @@
     });
     els.viewport.hidden = false;
     els.exportWrap.hidden = false;
+    [els.viewport, els.exportWrap].forEach(function (el) {
+      el.classList.remove('reveal');
+      void el.offsetWidth; // 重触发动画
+      el.classList.add('reveal');
+    });
     fitPaper();
   }
 
@@ -512,14 +517,29 @@
   // ---- 导出 / 分享 PDF ----
   function exportPdf() {
     if (!genEntries) return;
+    var btn = els.exportBtn;
+    var prevText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '正在加载导出组件…';
+    global.Vendor.load().then(function () {
+      btn.textContent = '正在生成 PDF…';
+      return doExport();
+    }).catch(function (e) {
+      U.toast(e.message || 'PDF 生成失败');
+    }).then(function () {
+      btn.disabled = false;
+      btn.textContent = prevText;
+    });
+  }
+
+  function doExport() {
     var paper = els.paper;
     var prevTransform = paper.style.transform;
     var prevHeight = els.viewport.style.height;
     paper.style.transform = 'none';
     paper.classList.add('capturing'); // 截图时隐藏虚线编辑框与铅笔角标
     els.viewport.style.height = 'auto';
-    U.toast('正在生成 PDF…');
-    html2canvas(paper, { scale: 2, backgroundColor: '#ffffff', useCORS: true }).then(function (canvas) {
+    return html2canvas(paper, { scale: 2, backgroundColor: '#ffffff', useCORS: true }).then(function (canvas) {
       paper.style.transform = prevTransform;
       paper.classList.remove('capturing');
       els.viewport.style.height = prevHeight;

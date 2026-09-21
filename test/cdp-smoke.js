@@ -41,6 +41,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       ws.send(JSON.stringify({ id: i, method, params: params || {} }));
     });
     await send('Page.enable');
+    await send('Network.enable');
+    await send('Network.setCacheDisabled', { cacheDisabled: true });
     await send('Page.navigate', { url: 'http://127.0.0.1:8765/test/smoke.html' });
     await sleep(2000);
     // 清掉旧 Service Worker 与缓存，避免 cache-first 提供过期文件，然后重新加载

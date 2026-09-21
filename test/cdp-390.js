@@ -53,6 +53,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     log('ws connected');
     await send('Page.enable');
+    await send('Network.enable');
+    await send('Network.setCacheDisabled', { cacheDisabled: true });
     if (MODE !== 'diagnose-desktop') {
       await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
     }
@@ -170,6 +172,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       await evalJs('var v=document.getElementById("a-vehicle"); v.value=""; v.focus();');
       await sleep(800);
       console.log('with-dropdown:', await evalJs(WALK));
+    } else if (MODE === 'shot-add') {
+      await sleep(1500);
+      await evalJs('document.querySelector(\'.tab-btn[data-tab="add"]\').click()');
+      await sleep(1000);
+      console.log(await evalJs(WALK));
+      await shot('test/shot-390-add.png');
     }
   } finally {
     edge.kill();

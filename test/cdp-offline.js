@@ -40,6 +40,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       sleep(t || 15000).then(() => 'TIMEOUT')
     ]);
     await send('Page.enable');
+    await send('Network.enable');
+    await send('Network.setCacheDisabled', { cacheDisabled: true });
     await send('Runtime.enable');
     await send('Network.enable');
 
@@ -55,7 +57,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       swState = await evalJs(`(async()=>{
         var reg = await navigator.serviceWorker.ready;
         var ctrl = !!navigator.serviceWorker.controller;
-        var keys = await (await caches.open('accounting-v3')).keys();
+        var keys = await (await caches.open('accounting-v5')).keys();
         return JSON.stringify({ active: !!reg.active, controller: ctrl, cached: keys.length });
       })()`, true);
       try {
@@ -92,6 +94,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       var rows = document.querySelectorAll('#s-paper .stmt-table tbody tr').length;
       return JSON.stringify({ paperShown: !v.hidden, tableRows: rows });
     })()`));
+    console.log('离线按需加载 vendor:', await evalJs('Vendor.load().then(function(){return Vendor.loaded();}).catch(function(e){return "FAIL:"+e.message;})', true, 30000));
     console.log('页面异常:', JSON.stringify(exceptions));
     console.log(exceptions.length === 0 ? 'OFFLINE PASS' : 'OFFLINE PASS(有异常，见上)');
   } finally {

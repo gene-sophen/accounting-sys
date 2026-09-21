@@ -40,13 +40,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       sleep(t || 15000).then(() => 'TIMEOUT')
     ]);
     await send('Page.enable');
+    await send('Network.enable');
+    await send('Network.setCacheDisabled', { cacheDisabled: true });
     await send('Runtime.enable');
     await Promise.race([send('Page.navigate', { url: 'http://127.0.0.1:8766/index.html' }), sleep(15000)]);
     await sleep(3000);
     console.log('基础渲染:', await evalJs(`(function(){
       return JSON.stringify({ readyState: document.readyState, tabs: document.querySelectorAll('.tab-btn').length,
         newSetCard: !!document.querySelector('.set-card-add'),
-        h2c: typeof html2canvas, jspdf: !!(window.jspdf && window.jspdf.jsPDF) });
+        vendorNotLoaded: typeof html2canvas === 'undefined' && !window.jspdf });
     })()`));
     console.log('SW 注册:', await evalJs('(async()=>{var r=await navigator.serviceWorker.getRegistrations();return r.length;})()', true));
     console.log('数据链路:', await evalJs(`(async () => {
@@ -63,6 +65,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       return JSON.stringify({ entryRows: rows, paperShown: !document.getElementById('s-viewport').hidden,
         has4574: paper.textContent.indexOf('4574.70') >= 0 });
     })()`, true, 20000));
+    console.log('延迟加载:', await evalJs('Vendor.load().then(function(){return Vendor.loaded();})', true));
     console.log('页面异常:', JSON.stringify(exceptions));
     console.log(exceptions.length === 0 ? 'DIST PASS' : 'DIST FAIL');
   } finally {

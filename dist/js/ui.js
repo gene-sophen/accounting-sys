@@ -106,12 +106,22 @@
     return p[0] + '年' + parseInt(p[1], 10) + '月' + parseInt(p[2], 10) + '日';
   }
 
+  // ---- 内联 SVG 图标（stroke 风格，随 currentColor 变色）----
+  var ICONS = {
+    pencil: '<svg viewBox="0 0 24 24"><path d="M12 20h8"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7.5 18.5 3 20l1.5-4.5Z"/></svg>',
+    plus: '<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    inbox: '<svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M3 13h6l1.5 2.5h3L15 13h6"/></svg>',
+    receipt: '<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.3L14 21l-2-1.3L10 21l-2-1.3L6 21Z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg>'
+  };
+  function icon(name) { return ICONS[name] || ''; }
+
   global.UI = {
     esc: esc,
     toast: toast,
     confirm: confirmDialog,
     modal: modal,
     segmented: segmented,
+    icon: icon,
     todayStr: todayStr,
     shortDate: shortDate,
     longDate: longDate
