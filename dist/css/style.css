@@ -12,6 +12,8 @@
   --separator-light: #e5e5ea;
   --fill: #e5e5ea;           /* 次要按钮 / 分段控件底 */
   --danger: #ff3b30;
+  --owed: #b45309;        /* 还欠（客户欠钱），amber-700 */
+  --overpaid: #0f766e;    /* 多收，同主题 teal */
   --radius: 12px;
   --radius-sm: 10px;
   --shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
@@ -596,6 +598,16 @@ span.editable { display: inline-block; }
 .total-row td { font-weight: 700; }
 .total-cell { text-align: center; font-weight: 700; }
 .paper .novehicle { color: #8e8e93; font-weight: 400; }
+.month-row td { font-weight: 700; background: #f5f5f5; }
+.month-row td:first-child { text-align: left; }
+.month-total td { font-weight: 700; text-align: right; border-top: 2px solid #000000; }
+.debt-table .total-row td { border-top: 2.5px solid #000000; }
+.debt-table-gap { height: 16px; }
+.debt-final { text-align: right; margin-top: 12px; }
+.debt-final-main { font-weight: 700; font-size: 16px; }
+.debt-final-sub { font-size: 12px; color: #3a3a3c; margin-top: 2px; }
+.paper .txt-owed { color: #b45309; }
+.paper .txt-overpaid { color: #0f766e; }
 .paper.capturing .editable { border-color: transparent; }
 .paper.capturing .editable::after { display: none; }
 /* ============ 纸张隔离区结束 ============ */
@@ -629,6 +641,62 @@ span.editable { display: inline-block; }
   cursor: pointer;
 }
 .col-move[disabled] { opacity: 0.3; }
+
+/* ---- 欠账模块（App UI）---- */
+.debt-new { display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 12px; }
+.debt-new svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; }
+.customer-row .entry-content { padding-right: 40px; }
+.debt-bal { font-weight: 700; font-size: 18px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.debt-owed { color: var(--owed); }
+.debt-overpaid { color: var(--overpaid); }
+.debt-edit { top: 0; bottom: 0; display: flex; align-items: center; }
+.dd-stat { margin: 12px; }
+.year-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 6px 0 10px;
+}
+.year-btn {
+  border: 0;
+  background: var(--fill);
+  color: var(--brand);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.year-label { font-weight: 700; font-size: 18px; min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+.dd-balance { font-weight: 700; font-size: 22px; }
+.dd-total { font-size: 12px; color: var(--text-3); padding: 8px 0 4px; font-variant-numeric: tabular-nums; }
+.dd-sec-title { font-size: 13px; color: var(--text-3); margin: 4px 18px 8px; }
+.dd-empty { padding: 24px 20px; }
+.dd-empty svg { width: 32px; height: 32px; }
+.dd-form { margin: 0 0 12px; box-shadow: none; background: none; padding: 0; }
+.debt-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg);
+  border-top: 0.5px solid var(--separator-light);
+}
+.debt-actions .btn { flex: 1; }
+.stmt-entry {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+.stmt-entry svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.list-tools { display: flex; gap: 8px; margin: 4px 0 10px; }
+.list-tools .seg-wrap { flex: 1; margin: 0; }
 
 /* ---- Toast ---- */
 .toast {

@@ -111,9 +111,74 @@
     pencil: '<svg viewBox="0 0 24 24"><path d="M12 20h8"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7.5 18.5 3 20l1.5-4.5Z"/></svg>',
     plus: '<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
     inbox: '<svg viewBox="0 0 24 24"><path d="M3 13l3-8h12l3 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M3 13h6l1.5 2.5h3L15 13h6"/></svg>',
-    receipt: '<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.3L14 21l-2-1.3L10 21l-2-1.3L6 21Z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg>'
+    receipt: '<svg viewBox="0 0 24 24"><path d="M6 3h12v18l-2-1.3L14 21l-2-1.3L10 21l-2-1.3L6 21Z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg>',
+    debt: '<svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="3.2"/><path d="M3.5 20c0-3 2.5-5.5 5.5-5.5 1.5 0 2.9.6 3.9 1.6"/><circle cx="17" cy="17" r="3.6"/><line x1="15.2" y1="17" x2="18.8" y2="17"/></svg>'
   };
   function icon(name) { return ICONS[name] || ''; }
+
+  // ---- 左滑删除（行内须含 .entry-content 与 .swipe-delete）----
+  var SWIPE_DELETE_W = 80;
+  function closeSwipe(row) {
+    row.classList.remove('swiped');
+    row.querySelector('.entry-content').style.transform = '';
+  }
+  function attachSwipe(row, onDelete) {
+    var content = row.querySelector('.entry-content');
+    var startX = 0, startY = 0, dx = 0, active = false, horiz = null;
+    content.addEventListener('touchstart', function (ev) {
+      var t = ev.touches[0];
+      startX = t.clientX; startY = t.clientY; dx = 0; horiz = null;
+      active = true;
+      content.style.transition = 'none';
+    }, { passive: true });
+    content.addEventListener('touchmove', function (ev) {
+      if (!active) return;
+      var t = ev.touches[0];
+      var mx = t.clientX - startX, my = t.clientY - startY;
+      if (horiz === null && (Math.abs(mx) > 10 || Math.abs(my) > 10)) horiz = Math.abs(mx) > Math.abs(my);
+      if (!horiz) return;
+      ev.preventDefault();
+      var base = row.classList.contains('swiped') ? -SWIPE_DELETE_W : 0;
+      var raw = base + mx;
+      dx = raw - base; // 用原始位移判断意图
+      var shown;
+      if (raw > 0) shown = raw * 0.3;                                     // 右拉过界：阻尼
+      else if (raw < -SWIPE_DELETE_W) shown = -SWIPE_DELETE_W + (raw + SWIPE_DELETE_W) * 0.3; // 左拉过界：阻尼
+      else shown = raw;
+      content.style.transform = 'translateX(' + shown + 'px)';
+    }, { passive: false });
+    content.addEventListener('touchend', function () {
+      if (!active) return;
+      active = false;
+      content.style.transition = '';
+      if (horiz) row.dataset.noClick = '1';
+      if (horiz && dx < -30) {
+        row.classList.add('swiped');
+        content.style.transform = 'translateX(-' + SWIPE_DELETE_W + 'px)';
+      } else if (horiz) {
+        closeSwipe(row);
+      }
+    });
+    row.querySelector('.swipe-delete').addEventListener('click', onDelete);
+  }
+
+  // ---- PDF 分页辅助：在目标切线附近向上找纯白行，分页不裁字 ----
+  function snapWhiteLine(canvas, targetY) {
+    var w = canvas.width, h = canvas.height;
+    if (targetY >= h) return h;
+    var range = Math.min(60, targetY);
+    var ctx = canvas.getContext('2d');
+    var data = ctx.getImageData(0, targetY - range, w, range).data;
+    for (var dy = range - 1; dy >= 0; dy--) {
+      var white = true;
+      for (var x = 0; x < w; x += 4) {
+        var i = (dy * w + x) * 4;
+        if (data[i] < 250 || data[i + 1] < 250 || data[i + 2] < 250) { white = false; break; }
+      }
+      if (white) return targetY - range + dy;
+    }
+    return targetY;
+  }
 
   global.UI = {
     esc: esc,
@@ -122,6 +187,9 @@
     modal: modal,
     segmented: segmented,
     icon: icon,
+    attachSwipe: attachSwipe,
+    closeSwipe: closeSwipe,
+    snapWhiteLine: snapWhiteLine,
     todayStr: todayStr,
     shortDate: shortDate,
     longDate: longDate

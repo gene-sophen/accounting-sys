@@ -131,7 +131,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         await App.selectSet(best.id);
         return best.id + ' (' + bestN + '台车)';
       })()`, true));
-      await evalJs('document.querySelector(\'.tab-btn[data-tab="stmt"]\').click()');
+      await evalJs('document.getElementById("entries-stmt-btn").click()');
       await sleep(1000);
       // 设置面板：切聚合格式，面板本身截图 + 溢出检查
       await evalJs('document.getElementById("s-settings").click()');
@@ -172,6 +172,91 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       await evalJs('var v=document.getElementById("a-vehicle"); v.value=""; v.focus();');
       await sleep(800);
       console.log('with-dropdown:', await evalJs(WALK));
+    } else if (MODE === 'shot-debts') {
+      await sleep(1500);
+      // 确保存在一个「还欠」客户（列表同时展示还欠/多收）
+      console.log('ensure owed:', await evalJs(`(async () => {
+        var cs = await DB.listCustomers();
+        for (var i = 0; i < cs.length; i++) {
+          var u = await DB.listUsage(cs[i].id), p = await DB.listPayments(cs[i].id);
+          if (Stats.yearSummary(u, p, new Date().getFullYear()).balanceFen > 0) return 'exists';
+        }
+        var id = await DB.addCustomer('还欠示例客户');
+        await DB.addUsage({ customer_id: id, date: '2026-09-05', qty_ml: 300000, total_fen: 210000 });
+        await DB.addUsage({ customer_id: id, date: '2026-09-12', qty_ml: 150.25, total_fen: 105175 });
+        await DB.addPayment({ customer_id: id, date: '2026-09-18', amount_fen: 100000, note: '转账' });
+        return 'created';
+      })()`, true, 30000));
+      await evalJs('document.querySelector(\'.tab-btn[data-tab="debts"]\').click()');
+      await sleep(1500);
+      console.log('debt-list:', await evalJs(WALK));
+      await shot('test/shot-390-debts.png');
+      // 选一个有多收场景的客户（欠账为负优先，否则第一个）
+      await evalJs(`(function(){
+        var rows = document.querySelectorAll('.customer-row .entry-content');
+        var pick = rows[0];
+        rows.forEach(function (r) { if (r.textContent.indexOf('多收') >= 0) pick = r; });
+        if (pick) pick.click();
+      })()`);
+      await sleep(1000);
+      console.log('debt-detail:', await evalJs(WALK));
+      await shot('test/shot-390-debt-detail.png');
+      // 记用油表单
+      await evalJs('document.getElementById("dd-usage-btn").click()');
+      await sleep(800);
+      console.log('debt-form:', await evalJs(WALK));
+      await shot('test/shot-390-debt-form.png');
+      await evalJs('(function(){var o=document.querySelector(".overlay-bottom");if(o)o.remove();})()');
+      await sleep(400);
+      // 记录左滑删除态（合成 touch）
+      await evalJs(`(function(){
+        var row = document.querySelector('#dd-usage-list .entry-row');
+        var content = row.querySelector('.entry-content');
+        var r = content.getBoundingClientRect();
+        function fire(type, x, y) {
+          var t = new Touch({ identifier: 1, target: content, clientX: x, clientY: y });
+          content.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [t], cancelable: true, bubbles: true }));
+        }
+        var sx = r.left + r.width - 20, sy = r.top + r.height / 2;
+        fire('touchstart', sx, sy);
+        fire('touchmove', sx - 20, sy);
+        fire('touchmove', sx - 70, sy);
+        fire('touchend', sx - 70, sy);
+      })()`);
+      await sleep(400);
+      await shot('test/shot-390-debt-swipe.png');
+      await evalJs('(function(){var o=document.querySelector(".page-overlay .entry-row.swiped");if(o){o.classList.remove("swiped");o.querySelector(".entry-content").style.transform="";}})()');
+      await sleep(300);
+      // 打印欠账单（独立子页）：纸张 + 设置面板
+      await evalJs('document.getElementById("dd-print").click()');
+      await sleep(1500);
+      await evalJs('(function(){var o=document.getElementById("debt-print-overlay");if(o)o.scrollTop=o.scrollHeight;})()');
+      await sleep(400);
+      console.log('debt-paper:', await evalJs(WALK));
+      await shot('test/shot-390-debt-paper.png');
+      await evalJs('document.querySelector("#debt-print-overlay #dp-settings").click()');
+      await sleep(800);
+      console.log('debt-settings:', await evalJs(WALK));
+      await shot('test/shot-390-debt-settings.png');
+      // 用油表三模式截图
+      await evalJs('document.querySelectorAll("#dp-usage-mode .seg-btn")[1].click()');
+      await sleep(600);
+      await evalJs('document.querySelector(".overlay [data-act=done]").click()');
+      await sleep(500);
+      await shot('test/shot-390-debt-paper-subtotal.png');
+      await evalJs('document.querySelector("#debt-print-overlay #dp-settings").click()');
+      await sleep(600);
+      await evalJs('document.querySelectorAll("#dp-usage-mode .seg-btn")[2].click()');
+      await sleep(600);
+      await evalJs('document.querySelector(".overlay [data-act=done]").click()');
+      await sleep(500);
+      await shot('test/shot-390-debt-paper-monthly.png');
+      // 复位默认模式
+      await evalJs('document.querySelector("#debt-print-overlay #dp-settings").click()');
+      await sleep(600);
+      await evalJs('document.querySelectorAll("#dp-usage-mode .seg-btn")[0].click()');
+      await sleep(400);
+      await evalJs('document.querySelector(".overlay [data-act=done]").click()');
     } else if (MODE === 'shot-add') {
       await sleep(1500);
       await evalJs('document.querySelector(\'.tab-btn[data-tab="add"]\').click()');

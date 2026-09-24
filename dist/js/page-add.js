@@ -5,6 +5,7 @@
   var M = global.Money, U = global.UI, DB = global.DB;
   var root = null;
   var els = {};
+  var saving = false; // 防连续快速点保存重复入库
 
   function render(container) {
     root = container;
@@ -75,6 +76,7 @@
   }
 
   function save(again) {
+    if (saving) return;
     if (!global.App.state.sets.length) { U.toast('请先新建账单集'); return; }
     var setId = parseInt(els.set.value, 10);
     var date = els.date.value;
@@ -86,11 +88,13 @@
     if (qty == null || qty <= 0) { U.toast('数量需为大于 0 的数字，最多三位小数'); return; }
     if (price == null) { U.toast('单价需为数字，最多两位小数'); return; }
 
+    saving = true;
     var entry = { set_id: setId, date: date, vehicle: vehicle, qty_ml: qty, price_fen: price, note: note };
     DB.addEntry(entry).then(function () {
       // 记忆上次输入：账单集 / 日期 / 单价
       return DB.setSetting('lastAdd', { set_id: setId, date: date, price_fen: price });
     }).then(function () {
+      saving = false;
       if (again) {
         els.qty.value = '';
         els.vehicle.value = '';

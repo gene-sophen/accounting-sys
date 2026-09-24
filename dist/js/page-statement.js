@@ -30,6 +30,7 @@
   ];
 
   var root = null, els = {};
+  var resizeBound = false;
   var fmt = 'date';            // 当前输出格式（按账单集记忆）
   var sigPos = 'below';        // 落款位置（按 集+格式 记忆）
   var sigFields = { receiver: true, supplier: true, issueDate: true }; // 落款显示开关（按 集+格式 记忆）
@@ -74,7 +75,7 @@
         onShow();
       });
     });
-    window.addEventListener('resize', fitPaper);
+    if (!resizeBound) { resizeBound = true; window.addEventListener('resize', fitPaper); }
   }
 
   // ---- 设置读写（键：format:{setId} / sigPos:{setId}:{fmt} / sigFields:{setId}:{fmt} / cols:{setId}:{fmt}）----
@@ -553,7 +554,9 @@
       var sliceH = Math.floor(usableHmm * pxPerMm);
       var y = 0, first = true;
       while (y < canvas.height) {
-        var h = Math.min(sliceH, canvas.height - y);
+        var end = Math.min(y + sliceH, canvas.height);
+        if (end < canvas.height) end = U.snapWhiteLine(canvas, end); // 分页处向上找空白行，不裁字
+        var h = end - y;
         var part = document.createElement('canvas');
         part.width = canvas.width;
         part.height = h;
@@ -564,7 +567,7 @@
         if (!first) pdf.addPage();
         pdf.addImage(part.toDataURL('image/jpeg', 0.95), 'JPEG', margin, margin, imgWmm, h / pxPerMm);
         first = false;
-        y += h;
+        y = end;
       }
       var setName = (global.App.state.sets.filter(function (s) {
         return s.id === global.App.state.currentSetId;

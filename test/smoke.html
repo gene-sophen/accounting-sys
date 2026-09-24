@@ -17,20 +17,22 @@ window.addEventListener('unhandledrejection', function (e) {
 <main id="main">
   <section class="page" id="page-entries"></section>
   <section class="page" id="page-add"></section>
-  <section class="page" id="page-stmt"></section>
+  <section class="page" id="page-debts"></section>
 </main>
 <nav id="tabbar">
   <button class="tab-btn active" data-tab="entries" type="button">账目</button>
   <button class="tab-btn" data-tab="add" type="button">记一笔</button>
-  <button class="tab-btn" data-tab="stmt" type="button">对账单</button>
+  <button class="tab-btn" data-tab="debts" type="button">欠账</button>
 </nav>
 <script src="../js/money.js"></script>
 <script src="../js/db.js"></script>
 <script src="../js/ui.js"></script>
+<script src="../js/stats.js"></script>
 <script src="../js/loader.js"></script>
 <script src="../js/page-entries.js"></script>
 <script src="../js/page-add.js"></script>
 <script src="../js/page-statement.js"></script>
+<script src="../js/page-debts.js"></script>
 <script src="../js/app.js"></script>
 <pre id="result">PENDING</pre>
 <script>
@@ -43,7 +45,9 @@ window.addEventListener('load', function () {
     var out = { errors: window.__errors, checks: {} };
     var C = out.checks;
     C.vendorLazyInitial = typeof html2canvas === 'undefined' && !window.jspdf;
-    C.tabRendered = document.querySelectorAll('.tab-btn').length === 3;
+    C.tabRendered = document.querySelectorAll('.tab-btn').length === 3 &&
+      !!document.querySelector('.tab-btn[data-tab="debts"]') &&
+      !document.querySelector('.tab-btn[data-tab="stmt"]');
     C.newSetCardShown = !!document.querySelector('.set-card-add');
 
     // 建一个账单集 + 3 条流水，走完整数据链路
@@ -80,10 +84,16 @@ window.addEventListener('load', function () {
       C.groupHeads = document.querySelectorAll('.group-key').length;
       C.entryRows = document.querySelectorAll('.entry-row').length;
       C.emptyVehicleSaved = document.querySelectorAll('.entry-row').length === 4;
-      // 切到对账单，生成流水表
-      App.showTab('stmt');
-      return wait(300);
+      // 对账单已降级为账目页的输出动作：从账目页入口进入子页
+      var stmtBtn = document.getElementById('entries-stmt-btn');
+      C.stmtEntryBtn = !!stmtBtn;
+      C.stmtEntryPrintText = !!stmtBtn && stmtBtn.textContent.indexOf('打印') >= 0;
+      document.getElementById('entries-stmt-btn').click();
+      return wait(500);
     }).then(function () {
+      C.stmtOverlayShown = !!document.querySelector('.page-overlay .stmt-host #s-set');
+      var stmtTitle = document.querySelector('.page-overlay .page-title');
+      C.stmtPrintTitle = !!stmtTitle && stmtTitle.textContent.indexOf('打印') >= 0;
       document.getElementById('s-gen').click();
       return wait(500);
     }).then(function () {
@@ -153,8 +163,10 @@ window.addEventListener('load', function () {
       C.sigAboveThreeFields = !!meta && ['收货方代理人', '供货方', '出单日期'].every(function (s) {
         return meta.textContent.indexOf(s) >= 0;
       });
-      // 关闭面板，回账目页切按车辆排布，检查组头
+      // 关闭面板与对账单子页，回账目页切按车辆排布，检查组头
       document.querySelector('.overlay [data-act=done]').click();
+      var stmtBack = document.querySelector('.page-overlay .back-btn');
+      if (stmtBack) stmtBack.click();
       App.showTab('entries');
       return wait(400);
     }).then(function () {
@@ -162,9 +174,365 @@ window.addEventListener('load', function () {
       segs[1].click();
       return wait(400);
     }).then(function () {
-      var keys = Array.prototype.map.call(document.querySelectorAll('.group-key'), function (el) { return el.textContent; });
+      var keys = Array.prototype.map.call(document.querySelectorAll('#seg-wrap ~ .group-list .group-key, #page-entries > .group-list .group-key'), function (el) { return el.textContent; });
       C.vehicleGroupKeys = keys.join('|');
       C.emptyGroupLast = keys[keys.length - 1] === '未填车辆';
+
+      // ======== 欠账模块链路 ========
+      // 建客户（UI）→ 记 2 笔同月用油（1 笔 UI 表单 + 1 笔 API）→ 记收款 → 列表/明细统计 → 多收 → 纸张
+      App.showTab('debts');
+      return wait(500);
+    }).then(function () {
+      C.debtTabRendered = !!document.getElementById('debt-new-btn');
+      document.getElementById('debt-new-btn').click();
+      return wait(400);
+    }).then(function () {
+      document.getElementById('cust-name').value = '冒烟测试客户';
+      document.querySelector('.overlay [data-act="ok"]').click();
+      return wait(600);
+    }).then(function () {
+      return DB.listCustomers();
+    }).then(function (customers) {
+      var cust = customers[customers.length - 1];
+      C.customerCreated = cust.name === '冒烟测试客户';
+      window.__custId = cust.id;
+      return DB.addUsage({ customer_id: cust.id, date: '2026-09-03', qty_ml: 250000, total_fen: 175350 })
+        .then(function () { return DB.addPayment({ customer_id: cust.id, date: '2026-09-15', amount_fen: 100000, note: '现金' }); })
+        .then(function () { return DebtsPage.refresh(); });
+    }).then(function () {
+      var rows = document.querySelectorAll('.customer-row');
+      var row = rows[rows.length - 1]; // 最新创建的客户（列表按创建时间排序）
+      C.debtListRow = !!row;
+      C.debtListBalance = row.querySelector('[data-bal]').textContent;
+      C.debtListBalanceOk = C.debtListBalance === '还欠 ¥753.50';
+      row.querySelector('.entry-content').click();
+      return wait(600);
+    }).then(function () {
+      // 明细页统计（本年欠账 / 累计欠账）
+      var ov = document.querySelector('.page-overlay');
+      C.debtDetailShown = !!ov && !!ov.querySelector('#dd-bal');
+      C.debtYearBalance = ov.querySelector('#dd-bal').textContent;
+      C.debtYearBalanceOk = C.debtYearBalance === '¥753.50' && ov.querySelector('#dd-bal-k').textContent === '本年还欠';
+      C.debtTotalOk = ov.querySelector('#dd-total').textContent.indexOf('累计还欠 ¥753.50') >= 0;
+      // 经 UI 表单记第二笔用油（同月）
+      ov.querySelector('#dd-usage-btn').click();
+      return wait(400);
+    }).then(function () {
+      document.getElementById('rf-date').value = '2026-09-10';
+      document.getElementById('rf-qty').value = '250.5';
+      document.getElementById('rf-total').value = '1753.50';
+      document.getElementById('rf-save').click();
+      return wait(600);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.debtBalanceAfterUsage = ov.querySelector('#dd-bal').textContent;
+      C.debtBalanceAfterUsageOk = C.debtBalanceAfterUsage === '¥2507.00' && ov.querySelector('#dd-bal-k').textContent === '本年还欠';
+      var heads = Array.prototype.map.call(ov.querySelectorAll('#dd-usage-list .group-key'), function (el) { return el.textContent; });
+      C.debtMonthGroup = heads.join('|');
+      C.debtMonthGroupOk = heads.length === 1 && heads[0] === '2026年9月';
+      C.debtMonthSubtotal = ov.querySelector('#dd-usage-list .group-sub').textContent;
+
+      // ===== 记录交互实测：点按编辑（回填/保存刷新/改回）+ 左滑删除 =====
+      // 1) 点按用油记录 → 编辑表单完整回填
+      ov.querySelector('#dd-usage-list .entry-row .entry-content').click();
+      return wait(400);
+    }).then(function () {
+      C.usageEditOpens = !!document.getElementById('rf-qty');
+      C.usageEditPrefill = document.getElementById('rf-date').value === '2026-09-03' &&
+        document.getElementById('rf-qty').value === '250' &&
+        document.getElementById('rf-total').value === '1753.50';
+      // 2) 修改总价保存 → 统计即时刷新（753.50+1753.50+246.50=2753.50）
+      document.getElementById('rf-total').value = '2000.00';
+      document.getElementById('rf-save').click();
+      return wait(600);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.usageEditSaveRefresh = ov.querySelector('#dd-bal').textContent === '¥2753.50';
+      // 3) 改回原价
+      ov.querySelector('#dd-usage-list .entry-row .entry-content').click();
+      return wait(400);
+    }).then(function () {
+      document.getElementById('rf-total').value = '1753.50';
+      document.getElementById('rf-save').click();
+      return wait(600);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.usageEditRevert = ov.querySelector('#dd-bal').textContent === '¥2507.00';
+      // 4) 点按收款记录 → 回填正确（不保存，点遮罩关闭）
+      ov.querySelector('#dd-pay-list .entry-row .entry-content').click();
+      return wait(400);
+    }).then(function () {
+      C.payEditPrefill = document.getElementById('rf-date').value === '2026-09-15' &&
+        document.getElementById('rf-amount').value === '1000.00' &&
+        document.getElementById('rf-note').value === '现金';
+      document.querySelector('.overlay').click(); // 遮罩关闭
+      return wait(300);
+    }).then(function () {
+      C.payEditClosed = !document.getElementById('rf-amount');
+      // 5) 合成 touch 左滑 → 出现删除按钮 → 确认弹窗统一文案 → 取消保留
+      var ov = document.querySelector('.page-overlay');
+      var row = ov.querySelector('#dd-usage-list .entry-row');
+      var content = row.querySelector('.entry-content');
+      var r = content.getBoundingClientRect();
+      function fireTouch(type, x, y) {
+        var touch = new Touch({ identifier: 1, target: content, clientX: x, clientY: y });
+        content.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [touch], cancelable: true, bubbles: true }));
+      }
+      var sx = r.left + r.width - 20, sy = r.top + r.height / 2;
+      fireTouch('touchstart', sx, sy);
+      fireTouch('touchmove', sx - 20, sy);
+      fireTouch('touchmove', sx - 70, sy);
+      fireTouch('touchend', sx - 70, sy);
+      C.debtSwipeOpens = row.classList.contains('swiped');
+      row.querySelector('.swipe-delete').click();
+      return wait(300);
+    }).then(function () {
+      var dlg = document.querySelector('.dialog-msg');
+      C.debtSwipeConfirmText = !!dlg && dlg.textContent.indexOf('删除后不可恢复，确认删除？') >= 0;
+      document.querySelector('.dialog-btn[data-act=cancel]').click();
+      return wait(300);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.debtSwipeCancelKeeps = ov.querySelectorAll('#dd-usage-list .entry-row').length === 2;
+      // 再记一笔大额收款 → 多收
+      return DB.addPayment({ customer_id: window.__custId, date: '2026-09-20', amount_fen: 600000, note: '' });
+    }).then(function () {
+      // 切年再切回，触发明细刷新（检验年份切换与多收口径）
+      var ov = document.querySelector('.page-overlay');
+      ov.querySelector('#dd-next').click();
+      ov.querySelector('#dd-prev').click();
+      return wait(500);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.debtCreditLabel = ov.querySelector('#dd-bal-k').textContent;
+      C.debtCreditOk = C.debtCreditLabel === '本年多收' && ov.querySelector('#dd-bal').textContent === '¥3493.00';
+      C.debtTotalCreditOk = ov.querySelector('#dd-total').textContent.indexOf('累计多收 ¥3493.00') >= 0;
+      // 打印欠账单：独立覆盖子页
+      ov.querySelector('#dd-print').click();
+      return wait(1000);
+    }).then(function () {
+      var pov = document.getElementById('debt-print-overlay');
+      C.debtPrintOverlay = !!pov && !!pov.querySelector('#debt-paper');
+      var paper = pov.querySelector('#debt-paper');
+      var txt = paper.textContent;
+      C.debtPaperShown = !pov.querySelector('#dd-viewport').hidden;
+      C.debtPaperTitle = txt.indexOf('欠账对账单') >= 0;
+      C.debtPaperMonth = txt.indexOf('2026年9月') >= 0;
+      C.debtPaperSubtotal = txt.indexOf('500.5') >= 0 && txt.indexOf('3507.00') >= 0;
+      // 新密度：无独立小计行；月组头行在升数/金额列位置带当月合计
+      C.debtNoSubtotalRow = paper.querySelectorAll('.month-total').length === 0;
+      var mCells = paper.querySelector('.month-row').cells;
+      C.debtMonthHeadTotals = mCells[0].textContent === '2026年9月' &&
+        mCells[1].textContent === '500.5' && mCells[2].textContent === '3507.00';
+      // 结尾小结块：两行均可就地编辑
+      var finalMain = paper.querySelector('.debt-final-main');
+      C.debtFinalEditable = !!finalMain && finalMain.getAttribute('contenteditable') === 'true' &&
+        paper.querySelector('.debt-final-sub').getAttribute('contenteditable') === 'true';
+      C.debtPaperPayments = txt.indexOf('1000.00') >= 0 && txt.indexOf('6000.00') >= 0;
+      C.debtPaperCredit = txt.indexOf('本年多收：¥3493.00') >= 0 && txt.indexOf('累计多收：¥3493.00') >= 0;
+      C.debtPaperDesc = txt.indexOf('多收 ¥3493.00') >= 0;
+      var sigLabel = paper.querySelector('.doc-sig .sig-label');
+      C.debtPaperSig = !!sigLabel && sigLabel.getAttribute('contenteditable') === 'true';
+      // 两个表格的列头名可就地编辑
+      var heads = paper.querySelectorAll('.col-head');
+      C.debtHeadEditable = heads.length === 6 && heads[0].getAttribute('contenteditable') === 'true';
+      // 明细数字点按 Toast（欠账语境）
+      paper.querySelector('.debt-table tbody td').click();
+      var toastEl = document.getElementById('toast');
+      C.debtTableToast = !!toastEl && toastEl.textContent.indexOf('数字来自记录') >= 0;
+      // 设置面板：落款 + 双列分组
+      pov.querySelector('#dp-settings').click();
+      return wait(500);
+    }).then(function () {
+      C.debtSettingsOpens = !!document.querySelector('.sheet-bottom');
+      C.debtSettingsColsUsage = document.querySelectorAll('#dp-cols-usage .col-row').length === 3;
+      C.debtSettingsColsPayment = document.querySelectorAll('#dp-cols-payment .col-row').length === 3;
+      // 结尾小结开关：关掉消失、重开恢复
+      C.debtFinalSwitchExists = !!document.getElementById('dp-sf-final');
+      document.getElementById('dp-sf-final').click();
+      return wait(500);
+    }).then(function () {
+      var pov = document.getElementById('debt-print-overlay');
+      C.debtFinalOff = !pov.querySelector('#debt-paper .debt-final');
+      document.getElementById('dp-sf-final').click();
+      return wait(500);
+    }).then(function () {
+      var pov = document.getElementById('debt-print-overlay');
+      C.debtFinalOn = !!pov.querySelector('#debt-paper .debt-final');
+      // ===== 用油表月度合计显示方式（三模式，切换即时生效）=====
+      C.debtUsageModeSegs = document.querySelectorAll('#dp-usage-mode .seg-btn').length === 3;
+      // 模式2：独立小计行
+      document.querySelectorAll('#dp-usage-mode .seg-btn')[1].click();
+      return wait(500);
+    }).then(function () {
+      var paper = document.getElementById('debt-print-overlay').querySelector('#debt-paper');
+      var mCells = paper.querySelector('.month-row').cells;
+      C.modeSubtotalHeadNoTotals = mCells[1].textContent === '' && mCells[2].textContent === '';
+      C.modeSubtotalRowExists = paper.querySelectorAll('.month-total').length === 1 &&
+        paper.querySelector('.month-total').textContent.indexOf('小计') >= 0;
+      C.modeSubtotalItemsExist = paper.querySelectorAll('.debt-table')[0].querySelectorAll('tbody tr').length === 5; // 组头+2明细+小计+合计
+      // 模式3：按月汇总（无明细行）
+      document.querySelectorAll('#dp-usage-mode .seg-btn')[2].click();
+      return wait(500);
+    }).then(function () {
+      var paper = document.getElementById('debt-print-overlay').querySelector('#debt-paper');
+      var rows = paper.querySelectorAll('.debt-table')[0].querySelectorAll('tbody tr');
+      C.modeMonthlyOnlyRows = rows.length === 2; // 1 个月汇总行 + 年合计
+      C.modeMonthlyOnlyTotals = rows[0].cells[0].textContent === '2026年9月' &&
+        rows[0].cells[1].textContent === '500.5' && rows[0].cells[2].textContent === '3507.00';
+      // 模式1：组头带合计（默认）
+      document.querySelectorAll('#dp-usage-mode .seg-btn')[0].click();
+      return wait(500);
+    }).then(function () {
+      var paper = document.getElementById('debt-print-overlay').querySelector('#debt-paper');
+      var mCells = paper.querySelector('.month-row').cells;
+      C.modeHeaderTotals = mCells[1].textContent === '500.5' && mCells[2].textContent === '3507.00' &&
+        paper.querySelectorAll('.month-total').length === 0;
+      // 列配置跟随：隐藏升数列 → 组头合计只剩 2 格、金额合计跟随到第 2 格
+      var cb = document.querySelectorAll('#dp-cols-usage .col-row input[type=checkbox]')[1]; // 升数
+      cb.click();
+      return wait(500);
+    }).then(function () {
+      var paper = document.getElementById('debt-print-overlay').querySelector('#debt-paper');
+      var mCells = paper.querySelector('.month-row').cells;
+      C.modeColsFollow = mCells.length === 2 && mCells[1].textContent === '3507.00';
+      // 恢复升数列
+      var cb = document.querySelectorAll('#dp-cols-usage .col-row input[type=checkbox]')[1];
+      cb.click();
+      return wait(400);
+    }).then(function () {
+      // 落款位置切到上方 → 纸张即时重渲染
+      document.querySelectorAll('#dp-sigpos .seg-btn')[1].click();
+      return wait(500);
+    }).then(function () {
+      var pov = document.getElementById('debt-print-overlay');
+      var paper = pov.querySelector('#debt-paper');
+      var firstTable = paper.querySelector('table');
+      var meta = paper.querySelector('.doc-meta');
+      C.debtSigAbove = !!meta && !!(firstTable.compareDocumentPosition(meta) & 2) && !paper.querySelector('.doc-sig');
+      // 切回下方并关闭面板与子页
+      document.querySelectorAll('#dp-sigpos .seg-btn')[0].click();
+      return wait(400);
+    }).then(function () {
+      document.querySelector('.overlay [data-act=done]').click();
+      return wait(300);
+    }).then(function () {
+      // 关闭打印子页与明细页
+      var pov = document.getElementById('debt-print-overlay');
+      if (pov) pov.querySelector('.back-btn').click();
+      return wait(400);
+    }).then(function () {
+      var back = document.querySelector('.page-overlay .back-btn');
+      if (back) back.click();
+      return wait(400);
+    }).then(function () {
+      // ===== 边界用例实测 =====
+      // b1 跨年：加 2025 年记录，验证年份切换与累计口径
+      return DB.addUsage({ customer_id: window.__custId, date: '2025-05-06', qty_ml: 100000, total_fen: 70000 });
+    }).then(function () {
+      var rows = document.querySelectorAll('.customer-row');
+      rows[rows.length - 1].querySelector('.entry-content').click();
+      return wait(600);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      ov.querySelector('#dd-prev').click(); // 2026 → 2025
+      return wait(500);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.crossYear2025 = ov.querySelector('#dd-usage').textContent === '100升 · ¥700.00' &&
+        ov.querySelector('#dd-bal').textContent === '¥700.00';
+      // 累计含 2025：3507.00+700.00-7000.00 = -2793.00
+      C.crossYearTotal = ov.querySelector('#dd-total').textContent.indexOf('累计多收 ¥2793.00') >= 0;
+      ov.querySelector('#dd-next').click(); // 回到 2026
+      return wait(400);
+    }).then(function () {
+      // b2 空年份打印：切到 2030（无任何记录）
+      var ov = document.querySelector('.page-overlay');
+      for (var i = 0; i < 4; i++) ov.querySelector('#dd-next').click();
+      return wait(500);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.emptyYearStat = ov.querySelector('#dd-bal').textContent === '¥0.00';
+      ov.querySelector('#dd-print').click();
+      return wait(1000);
+    }).then(function () {
+      var pov = document.getElementById('debt-print-overlay');
+      var paper = pov && pov.querySelector('#debt-paper');
+      C.emptyYearPrint = !!paper && paper.textContent.indexOf('合计') >= 0 &&
+        paper.querySelectorAll('table').length === 2;
+      if (pov) pov.querySelector('.back-btn').click();
+      return wait(400);
+    }).then(function () {
+      // 切回 2026 年（明细页仍在）
+      var ov = document.querySelector('.page-overlay');
+      for (var i = 0; i < 4; i++) ov.querySelector('#dd-prev').click();
+      return wait(500);
+    }).then(function () {
+      // b3 非法输入（记用油）：字母 / 超三位小数 / 空，均拒绝且不入库
+      var ov = document.querySelector('.page-overlay');
+      var before = ov.querySelectorAll('#dd-usage-list .entry-row').length;
+      window.__usageRowsBefore = before;
+      ov.querySelector('#dd-usage-btn').click();
+      return wait(400);
+    }).then(function () {
+      document.getElementById('rf-qty').value = 'abc';
+      document.getElementById('rf-total').value = '100.00';
+      document.getElementById('rf-save').click();
+      return wait(300);
+    }).then(function () {
+      var toast = document.getElementById('toast');
+      C.invalidQtyAlpha = !!toast && toast.classList.contains('show') &&
+        !!document.getElementById('rf-qty'); // 表单未关闭
+      document.getElementById('rf-qty').value = '1.2345';
+      document.getElementById('rf-save').click();
+      return wait(300);
+    }).then(function () {
+      C.invalidQtyDigits = !!document.getElementById('rf-qty');
+      document.getElementById('rf-qty').value = '';
+      document.getElementById('rf-save').click();
+      return wait(300);
+    }).then(function () {
+      C.invalidQtyEmpty = !!document.getElementById('rf-qty');
+      // b4 连续快速点保存不重复入库
+      document.getElementById('rf-qty').value = '10';
+      document.getElementById('rf-total').value = '70.00';
+      var btn = document.getElementById('rf-save');
+      btn.click(); btn.click(); btn.click(); // 三连击
+      return wait(800);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.doubleSaveGuard = ov.querySelectorAll('#dd-usage-list .entry-row').length === window.__usageRowsBefore + 1;
+      // 关闭明细页
+      ov.querySelector('.back-btn').click();
+      return wait(400);
+    }).then(function () {
+      // b5 大金额收款显示
+      return DB.addPayment({ customer_id: window.__custId, date: '2026-09-21', amount_fen: 15000000, note: '' });
+    }).then(function () {
+    }).then(function () {
+      return DebtsPage.refresh();
+    }).then(function () {
+      var rows = document.querySelectorAll('.customer-row');
+      var sub = rows[rows.length - 1].querySelector('.entry-sub').textContent;
+      C.bigAmount = sub.indexOf('157000.00') >= 0;
+      // b6 超长名称不撑宽页面
+      return DB.addCustomer('超长客户名称压力测试一二三四五六七八九十一二三四');
+    }).then(function () {
+      return DebtsPage.refresh();
+    }).then(function () {
+      C.longNameNoOverflow = document.documentElement.scrollWidth <= window.innerWidth;
+      // b7 记一笔非法输入（回到记一笔页）
+      App.showTab('add');
+      return wait(500);
+    }).then(function () {
+      document.getElementById('a-qty').value = 'abc';
+      document.getElementById('a-price').value = '6.90';
+      document.getElementById('a-save').click();
+      return wait(300);
+    }).then(function () {
+      var toast = document.getElementById('toast');
+      C.addInvalidRejected = !!toast && toast.classList.contains('show') &&
+        !!document.getElementById('a-qty');
       C.errorsAfter = window.__errors;
       report(out);
     }).catch(function (err) {

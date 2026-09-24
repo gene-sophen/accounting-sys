@@ -1,5 +1,6 @@
 /* 离线实测：SW 预缓存激活后断网 reload，断言页面完整渲染 + 对账单可生成 */
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
+const CACHE_NAME = (require('fs').readFileSync('sw.js', 'utf8').match(/var CACHE = '([^']+)'/) || [])[1] || 'accounting-v1';
 const { spawn } = require('child_process');
 const http = require('http');
 function getJson(path) {
@@ -57,7 +58,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       swState = await evalJs(`(async()=>{
         var reg = await navigator.serviceWorker.ready;
         var ctrl = !!navigator.serviceWorker.controller;
-        var keys = await (await caches.open('accounting-v5')).keys();
+        var keys = await (await caches.open('${CACHE_NAME}')).keys();
         return JSON.stringify({ active: !!reg.active, controller: ctrl, cached: keys.length });
       })()`, true);
       try {
@@ -84,8 +85,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         h2c: typeof html2canvas, jspdf: !!(window.jspdf && window.jspdf.jsPDF)
       });
     })()`));
-    // 4) 离线生成对账单
-    await evalJs('document.querySelector(\'.tab-btn[data-tab="stmt"]\').click()');
+    // 4) 离线生成对账单（从账目页入口进入子页）
+    await evalJs('document.getElementById("entries-stmt-btn").click()');
     await sleep(1200);
     await evalJs('document.getElementById("s-gen").click()');
     await sleep(1500);

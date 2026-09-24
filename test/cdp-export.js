@@ -57,8 +57,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       await DB.addEntry({ set_id: setId, date: '2026-07-' + ('0' + (i % 28 + 1)).slice(-2),
         vehicle: i + '号挖机', qty_ml: 100000 + i * 1370, price_fen: 690, note: '' });
     }
-    App.showTab('stmt');
+    App.showTab('entries');
     await new Promise(r => setTimeout(r, 500));
+    document.getElementById('entries-stmt-btn').click();
+    await new Promise(r => setTimeout(r, 600));
     document.getElementById('s-settings').click();
     await new Promise(r => setTimeout(r, 500));
     var seg = document.querySelectorAll('#panel-fmt .seg-btn');

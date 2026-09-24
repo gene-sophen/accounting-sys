@@ -7,7 +7,7 @@
   'use strict';
 
   var DB_NAME = 'accounting-db';
-  var DB_VERSION = 1;
+  var DB_VERSION = 2;
   var dbPromise = null;
 
   function open() {
@@ -25,6 +25,17 @@
         }
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains('customers')) {
+          db.createObjectStore('customers', { keyPath: 'id', autoIncrement: true });
+        }
+        if (!db.objectStoreNames.contains('usage_records')) {
+          db.createObjectStore('usage_records', { keyPath: 'id', autoIncrement: true })
+            .createIndex('customer_id', 'customer_id', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('payments')) {
+          db.createObjectStore('payments', { keyPath: 'id', autoIncrement: true })
+            .createIndex('customer_id', 'customer_id', { unique: false });
         }
       };
       req.onsuccess = function () { resolve(req.result); };
@@ -119,6 +130,96 @@
         return reqToPromise(t.objectStore('entries').index('set_id').getAll(IDBKeyRange.only(setId)));
       }).then(function (rows) {
         // 同分组内按录入时间排序，保证顺序稳定
+        rows.sort(function (a, b) { return (a.created_at - b.created_at) || (a.id - b.id); });
+        return rows;
+      });
+    },
+
+    // ---- customers / usage_records / payments ----
+    addCustomer: function (name) {
+      return tx(['customers'], 'readwrite', function (t) {
+        return reqToPromise(t.objectStore('customers').add({ name: name, created_at: Date.now() }));
+      });
+    },
+    updateCustomer: function (id, name) {
+      return tx(['customers'], 'readwrite', function (t) {
+        var st = t.objectStore('customers');
+        return reqToPromise(st.get(id)).then(function (row) {
+          if (!row) return;
+          row.name = name;
+          return reqToPromise(st.put(row));
+        });
+      });
+    },
+    deleteCustomer: function (id) {
+      // 级联删除该客户全部用油/收款记录及相关设置
+      return tx(['customers', 'usage_records', 'payments', 'settings'], 'readwrite', function (t) {
+        t.objectStore('customers').delete(id);
+        ['usage_records', 'payments'].forEach(function (store) {
+          var idx = t.objectStore(store).index('customer_id');
+          idx.getAll(IDBKeyRange.only(id)).onsuccess = function (e) {
+            var st = t.objectStore(store);
+            (e.target.result || []).forEach(function (r) { st.delete(r.id); });
+          };
+        });
+        ['debtDoc:' + id, 'debtSigPos:' + id, 'debtSigFields:' + id, 'debtFinalOn:' + id, 'debtUsageMode:' + id,
+         'debtCols:' + id + ':usage', 'debtCols:' + id + ':payment']
+          .forEach(function (k) { t.objectStore('settings').delete(k); });
+      });
+    },
+    listCustomers: function () {
+      return tx(['customers'], 'readonly', function (t) {
+        return reqToPromise(t.objectStore('customers').getAll());
+      }).then(function (rows) {
+        rows.sort(function (a, b) { return a.created_at - b.created_at; });
+        return rows;
+      });
+    },
+    addUsage: function (rec) {
+      rec.created_at = Date.now();
+      return tx(['usage_records'], 'readwrite', function (t) {
+        return reqToPromise(t.objectStore('usage_records').add(rec));
+      });
+    },
+    updateUsage: function (rec) {
+      return tx(['usage_records'], 'readwrite', function (t) {
+        return reqToPromise(t.objectStore('usage_records').put(rec));
+      });
+    },
+    deleteUsage: function (id) {
+      return tx(['usage_records'], 'readwrite', function (t) {
+        t.objectStore('usage_records').delete(id);
+      });
+    },
+    listUsage: function (customerId) {
+      return tx(['usage_records'], 'readonly', function (t) {
+        return reqToPromise(t.objectStore('usage_records').index('customer_id').getAll(IDBKeyRange.only(customerId)));
+      }).then(function (rows) {
+        rows.sort(function (a, b) { return (a.created_at - b.created_at) || (a.id - b.id); });
+        return rows;
+      });
+    },
+    addPayment: function (rec) {
+      if (rec.note == null) rec.note = '';
+      rec.created_at = Date.now();
+      return tx(['payments'], 'readwrite', function (t) {
+        return reqToPromise(t.objectStore('payments').add(rec));
+      });
+    },
+    updatePayment: function (rec) {
+      return tx(['payments'], 'readwrite', function (t) {
+        return reqToPromise(t.objectStore('payments').put(rec));
+      });
+    },
+    deletePayment: function (id) {
+      return tx(['payments'], 'readwrite', function (t) {
+        t.objectStore('payments').delete(id);
+      });
+    },
+    listPayments: function (customerId) {
+      return tx(['payments'], 'readonly', function (t) {
+        return reqToPromise(t.objectStore('payments').index('customer_id').getAll(IDBKeyRange.only(customerId)));
+      }).then(function (rows) {
         rows.sort(function (a, b) { return (a.created_at - b.created_at) || (a.id - b.id); });
         return rows;
       });

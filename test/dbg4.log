@@ -1,0 +1,6 @@
+smoke ready
+add entries: added
+paper state: {"hidden":false,"h":2516,"rows":66,"setVal":"4","toast":"数量需为大于 0 的数字，最多三位小数"}
+paper height: 2516
+export: {"saved":{"name":"对账单-冒烟测试工地.pdf","pages":3,"size":1001424},"err":null,"lazyBefore":false}
+done

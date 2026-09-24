@@ -45,7 +45,7 @@
       document.querySelectorAll('.page').forEach(function (p) {
         p.classList.toggle('active', p.id === 'page-' + name);
       });
-      var page = { entries: global.EntriesPage, add: global.AddPage, stmt: global.StatementPage }[name];
+      var page = { entries: global.EntriesPage, add: global.AddPage, debts: global.DebtsPage }[name];
       if (page && page.onShow) page.onShow();
     },
 
@@ -98,7 +98,7 @@
   function init() {
     global.EntriesPage.render(document.getElementById('page-entries'));
     global.AddPage.render(document.getElementById('page-add'));
-    global.StatementPage.render(document.getElementById('page-stmt'));
+    global.DebtsPage.render(document.getElementById('page-debts'));
 
     document.querySelectorAll('.tab-btn').forEach(function (b) {
       b.addEventListener('click', function () { App.showTab(b.getAttribute('data-tab')); });
@@ -110,6 +110,28 @@
       navigator.serviceWorker.register('sw.js').catch(function () {});
     }
   }
+
+  App.closeOverlay = function (overlay) {
+    overlay.classList.add('closing');
+    setTimeout(function () { overlay.remove(); }, 200);
+  };
+
+  // 从账目页进入对账单子页（预填当前选中账单集，页内可换集）
+  App.openStatement = function (setId) {
+    var overlay = document.createElement('div');
+    overlay.className = 'page-overlay';
+    overlay.innerHTML =
+      '<div class="page-header"><button class="back-btn" type="button">‹ 返回</button><span class="page-title">打印对账单</span></div>' +
+      '<div class="stmt-host"></div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('.back-btn').addEventListener('click', function () { App.closeOverlay(overlay); });
+    function mount() {
+      global.StatementPage.render(overlay.querySelector('.stmt-host'));
+      global.StatementPage.onShow();
+    }
+    if (setId) App.selectSet(setId).then(mount);
+    else mount();
+  };
 
   global.App = App;
   document.addEventListener('DOMContentLoaded', init);
