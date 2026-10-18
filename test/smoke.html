@@ -178,6 +178,88 @@ window.addEventListener('load', function () {
       C.vehicleGroupKeys = keys.join('|');
       C.emptyGroupLast = keys[keys.length - 1] === '未填车辆';
 
+      // ===== 手动金额（抹零）与版本号 =====
+      return DB.addSet('手动金额测试集').then(function (id) {
+        window.__manualSetId = id;
+        return App.selectSet(id);
+      });
+    }).then(function () {
+      App.showTab('add');
+      return wait(500);
+    }).then(function () {
+      document.getElementById('a-set').value = String(window.__manualSetId);
+      document.getElementById('a-date').value = '2026-07-05';
+      var q = document.getElementById('a-qty');
+      q.value = '663';
+      q.dispatchEvent(new Event('input', { bubbles: true }));
+      var p = document.getElementById('a-price');
+      p.value = '6.90';
+      p.dispatchEvent(new Event('input', { bubbles: true }));
+      C.manualAutoPreview = document.getElementById('a-amt').value === '4574.70';
+      // 手动改为 4574.00 → 进入手动态并显示提示
+      var a = document.getElementById('a-amt');
+      a.value = '4574.00';
+      a.dispatchEvent(new Event('input', { bubbles: true }));
+      C.manualHintShown = !document.getElementById('a-amt-hint').hidden;
+      document.getElementById('a-save').click();
+      return wait(700);
+    }).then(function () {
+      // 列表显示手动值
+      var rows = document.querySelectorAll('#page-entries .entry-row');
+      C.manualSaved = rows.length === 1 && rows[0].querySelector('.entry-amt').textContent === '¥4574.00';
+      // 详情页手动调整标注
+      rows[0].querySelector('.entry-content').click();
+      return wait(500);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      C.manualDetailNote = ov.textContent.indexOf('手动调整') >= 0;
+      ov.querySelector('[data-act="edit"]').click();
+      return wait(500);
+    }).then(function () {
+      // 编辑页回填手动态（金额=4574.00 且提示可见）
+      C.manualEditPrefill = document.getElementById('f-amt').value === '4574.00' &&
+        !document.getElementById('f-amt-hint').hidden;
+      // 清空金额 → 恢复自动计算并保存
+      var a = document.getElementById('f-amt');
+      a.value = '';
+      a.dispatchEvent(new Event('input', { bubbles: true }));
+      C.manualClearRestoresAuto = document.getElementById('f-amt').value === '4574.70' &&
+        document.getElementById('f-amt-hint').hidden;
+      document.getElementById('f-save').click();
+      return wait(600);
+    }).then(function () {
+      var rows = document.querySelectorAll('#page-entries .entry-row');
+      C.manualClearedSaved = rows[0].querySelector('.entry-amt').textContent === '¥4574.70';
+      // 对账单合计用实际金额（再手动改回 4574.00 后）
+      var rows2 = rows;
+      rows2[0].querySelector('.entry-content').click();
+      return wait(400);
+    }).then(function () {
+      var ov = document.querySelector('.page-overlay');
+      ov.querySelector('[data-act="edit"]').click();
+      return wait(400);
+    }).then(function () {
+      var a = document.getElementById('f-amt');
+      a.value = '4574.00';
+      a.dispatchEvent(new Event('input', { bubbles: true }));
+      document.getElementById('f-save').click();
+      return wait(600);
+    }).then(function () {
+      document.getElementById('entries-stmt-btn').click();
+      return wait(600);
+    }).then(function () {
+      document.getElementById('s-gen').click();
+      return wait(600);
+    }).then(function () {
+      var paper = document.getElementById('s-paper');
+      var txt = paper.textContent;
+      C.manualStmtAmount = txt.indexOf('4574.00') >= 0 && txt.indexOf('4574.70') < 0;
+      var back = document.querySelector('.page-overlay .back-btn');
+      if (back) back.click();
+      return wait(300);
+    }).then(function () {
+      C.versionFooter = document.getElementById('app-version').textContent === '记账 · 对账单 v' + App.VERSION;
+
       // ======== 欠账模块链路 ========
       // 建客户（UI）→ 记 2 笔同月用油（1 笔 UI 表单 + 1 笔 API）→ 记收款 → 列表/明细统计 → 多收 → 纸张
       App.showTab('debts');

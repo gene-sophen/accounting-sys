@@ -125,7 +125,10 @@ select.text-input { appearance: auto; }
   font-size: 15px;
   color: var(--text-3);
 }
-.amt-preview b { color: var(--text-1); font-size: 20px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.amt-input { font-weight: 700; font-variant-numeric: tabular-nums; }
+.amt-hint { font-size: 12px; color: var(--text-3); margin-top: 6px; }
+.manual-note { font-size: 12px; color: var(--text-3); }
+.app-version { text-align: center; font-size: 12px; color: var(--text-3); padding: 20px 0 4px; }
 .add-btns { display: flex; gap: 10px; }
 .add-btns .btn { flex: 1; }
 

@@ -61,11 +61,19 @@
     return s;
   }
 
+  // 条目实际金额(分)：手动金额(amount_fen，抹零场景)优先，否则按数量×单价计算
+  function entryFen(entry) {
+    if (entry && typeof entry.amount_fen === 'number' && isFinite(entry.amount_fen)) {
+      return entry.amount_fen;
+    }
+    return amountFen(entry.qty_ml, entry.price_fen);
+  }
+
   // 一组条目的合计金额(分)与合计升数(千分之一升)：先整数累加，调用方再格式化
   function totals(entries) {
     var fen = 0, ml = 0;
     for (var i = 0; i < entries.length; i++) {
-      fen += amountFen(entries[i].qty_ml, entries[i].price_fen);
+      fen += entryFen(entries[i]);
       ml += entries[i].qty_ml;
     }
     return { fen: fen, ml: ml };
@@ -75,6 +83,7 @@
     parseQtyMl: parseQtyMl,
     parsePriceFen: parsePriceFen,
     amountFen: amountFen,
+    entryFen: entryFen,
     fmtFen: fmtFen,
     fmtMl: fmtMl,
     totals: totals

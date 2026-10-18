@@ -53,7 +53,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     await send('Page.navigate', { url: 'http://127.0.0.1:8765/test/smoke.html' });
     // 轮询结果
     let result = null;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 150; i++) {
       await sleep(500);
       const r = await send('Runtime.evaluate', {
         expression: 'document.getElementById("result").textContent',

@@ -321,7 +321,7 @@
       case 'vehicle': return vehicleHtml(e.vehicle);
       case 'qty': return M.fmtMl(e.qty_ml);
       case 'price': return M.fmtFen(e.price_fen);
-      case 'amount': return M.fmtFen(M.amountFen(e.qty_ml, e.price_fen));
+      case 'amount': return M.fmtFen(M.entryFen(e));
       default: return '';
     }
   }
@@ -338,7 +338,7 @@
       var key = e.vehicle || '';
       if (!agg[key]) agg[key] = { vehicle: key, ml: 0, fen: 0 };
       agg[key].ml += e.qty_ml;
-      agg[key].fen += M.amountFen(e.qty_ml, e.price_fen);
+      agg[key].fen += M.entryFen(e);
     });
     var list = Object.keys(agg).map(function (k) { return agg[k]; })
       .sort(function (a, b) {

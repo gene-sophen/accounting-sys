@@ -1,4 +1,4 @@
-/* page-add.js —— 记一笔：字段顺序、上次输入记忆、金额实时预览、双按钮、车辆补全 */
+/* page-add.js —— 记一笔：字段顺序、上次输入记忆、金额可手动编辑（抹零）、双按钮、车辆补全 */
 (function (global) {
   'use strict';
 
@@ -17,7 +17,9 @@
         '<label class="form-label">单价（元/升）</label><input class="text-input" id="a-price" type="text" inputmode="decimal" placeholder="如 6.90">' +
         '<label class="form-label">加油车辆</label><div class="vehicle-wrap"><input class="text-input" id="a-vehicle" type="text" maxlength="30" autocomplete="off" placeholder="输入或选择历史车辆"></div>' +
         '<label class="form-label">备注（可选）</label><input class="text-input" id="a-note" type="text" maxlength="60" placeholder="可选">' +
-        '<div class="amt-preview">金额：<b id="a-amt">—</b></div>' +
+        '<label class="form-label">金额（自动计算，可手动改）</label>' +
+        '<input class="text-input amt-input" id="a-amt" type="text" inputmode="decimal" placeholder="0.00">' +
+        '<div class="amt-hint" id="a-amt-hint" hidden>手动金额，清空可恢复自动计算</div>' +
       '</div>' +
       '<div class="add-btns">' +
         '<button class="btn btn-plain" id="a-save-more">保存并再记一笔</button>' +
@@ -30,10 +32,23 @@
       price: root.querySelector('#a-price'),
       vehicle: root.querySelector('#a-vehicle'),
       note: root.querySelector('#a-note'),
-      amt: root.querySelector('#a-amt')
+      amt: root.querySelector('#a-amt'),
+      amtHint: root.querySelector('#a-amt-hint'),
+      amtManual: false
     };
     els.qty.addEventListener('input', updateAmt);
     els.price.addEventListener('input', updateAmt);
+    els.amt.addEventListener('input', function () {
+      if (els.amt.value.trim() === '') {
+        // 清空金额框 → 恢复自动计算
+        els.amtManual = false;
+        els.amtHint.hidden = true;
+        updateAmt();
+      } else {
+        els.amtManual = true;
+        els.amtHint.hidden = false;
+      }
+    });
     root.querySelector('#a-save').addEventListener('click', function () { save(false); });
     root.querySelector('#a-save-more').addEventListener('click', function () { save(true); });
     global.App.attachVehicleComplete(els.vehicle, els.vehicle.parentElement, function () {
@@ -70,9 +85,17 @@
     else if (st.currentSetId) els.set.value = String(st.currentSetId);
   }
 
+  // 自动态才回填；手动态不被数量/单价变化覆盖
   function updateAmt() {
+    if (els.amtManual) return;
     var q = M.parseQtyMl(els.qty.value), p = M.parsePriceFen(els.price.value);
-    els.amt.textContent = (q != null && p != null) ? '¥' + M.fmtFen(M.amountFen(q, p)) : '—';
+    els.amt.value = (q != null && p != null) ? M.fmtFen(M.amountFen(q, p)) : '';
+  }
+
+  function resetAmt() {
+    els.amtManual = false;
+    els.amtHint.hidden = true;
+    updateAmt();
   }
 
   function save(again) {
@@ -87,25 +110,28 @@
     if (!date) { U.toast('请选择日期'); return; }
     if (qty == null || qty <= 0) { U.toast('数量需为大于 0 的数字，最多三位小数'); return; }
     if (price == null) { U.toast('单价需为数字，最多两位小数'); return; }
+    var amount = null;
+    if (els.amtManual) {
+      amount = M.parsePriceFen(els.amt.value);
+      if (amount == null) { U.toast('金额需为数字，最多两位小数'); return; } // 0 允许（抹到 0 合法）
+    }
 
     saving = true;
     var entry = { set_id: setId, date: date, vehicle: vehicle, qty_ml: qty, price_fen: price, note: note };
+    if (els.amtManual) entry.amount_fen = amount; // 自动态不存该字段，保持数据干净
     DB.addEntry(entry).then(function () {
       // 记忆上次输入：账单集 / 日期 / 单价
       return DB.setSetting('lastAdd', { set_id: setId, date: date, price_fen: price });
     }).then(function () {
       saving = false;
+      els.qty.value = '';
+      els.vehicle.value = '';
+      els.note.value = '';
+      resetAmt();
       if (again) {
-        els.qty.value = '';
-        els.vehicle.value = '';
-        els.note.value = '';
-        updateAmt();
         els.qty.focus();
         U.toast('已保存');
       } else {
-        els.qty.value = '';
-        els.vehicle.value = '';
-        els.note.value = '';
         global.App.selectSet(setId).then(function () {
           global.App.showTab('entries');
         });

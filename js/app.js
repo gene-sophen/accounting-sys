@@ -5,6 +5,7 @@
   var DB = global.DB, U = global.UI;
 
   var App = {
+    VERSION: '1.4.0',
     state: {
       sets: [],
       currentSetId: null,

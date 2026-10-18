@@ -257,6 +257,48 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       await evalJs('document.querySelectorAll("#dp-usage-mode .seg-btn")[0].click()');
       await sleep(400);
       await evalJs('document.querySelector(".overlay [data-act=done]").click()');
+    } else if (MODE === 'shot-manual') {
+      await sleep(1500);
+      // 记一笔：手动金额可编辑 + 手动态提示
+      await evalJs('document.querySelector(\'.tab-btn[data-tab="add"]\').click()');
+      await sleep(800);
+      await evalJs(`(function(){
+        var q = document.getElementById('a-qty');
+        q.value = '663'; q.dispatchEvent(new Event('input', { bubbles: true }));
+        var p = document.getElementById('a-price');
+        p.value = '6.90'; p.dispatchEvent(new Event('input', { bubbles: true }));
+        var a = document.getElementById('a-amt');
+        a.value = '4574.00'; a.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+      await sleep(400);
+      await shot('test/shot-390-add-manual.png');
+      // 详情页手动调整标注（用手动金额测试集的数据）
+      await evalJs(`(async () => {
+        var sets = await DB.listSets();
+        var target = null;
+        for (var i = 0; i < sets.length; i++) {
+          if (sets[i].name === '手动金额测试集') { target = sets[i]; break; }
+        }
+        var id = target ? target.id : await DB.addSet('手动金额测试集');
+        var rows = await DB.listEntries(id);
+        if (!rows.length) {
+          await DB.addEntry({ set_id: id, date: '2026-07-05', vehicle: '3号挖机', qty_ml: 663000, price_fen: 690, amount_fen: 457400, note: '' });
+        }
+        await App.selectSet(id);
+        await EntriesPage.refresh();
+        document.querySelector('#page-entries .entry-row .entry-content').click();
+      })()`, true, 20000);
+      await sleep(800);
+      console.log('detail-manual:', await evalJs(WALK));
+      await shot('test/shot-390-detail-manual.png');
+      // 账目页底部版本号
+      await evalJs('(function(){var o=document.querySelector(".page-overlay .back-btn");if(o)o.click();})()');
+      await sleep(500);
+      await evalJs('document.querySelector(\'.tab-btn[data-tab="entries"]\').click()');
+      await sleep(800);
+      await evalJs('window.scrollTo(0, document.body.scrollHeight)');
+      await sleep(300);
+      await shot('test/shot-390-version.png');
     } else if (MODE === 'shot-add') {
       await sleep(1500);
       await evalJs('document.querySelector(\'.tab-btn[data-tab="add"]\').click()');

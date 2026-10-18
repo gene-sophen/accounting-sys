@@ -18,11 +18,13 @@
           global.UI.icon('receipt') + '<span>打印</span></button>' +
       '</div>' +
       '<div class="group-list" id="group-list"></div>' +
-      '<div class="empty-hint" id="entries-empty" hidden></div>';
+      '<div class="empty-hint" id="entries-empty" hidden></div>' +
+      '<div class="app-version" id="app-version"></div>';
     stripEl = root.querySelector('#set-strip');
     segWrapEl = root.querySelector('#seg-wrap');
     listEl = root.querySelector('#group-list');
     emptyEl = root.querySelector('#entries-empty');
+    root.querySelector('#app-version').textContent = '记账 · 对账单 v' + global.App.VERSION;
     root.querySelector('#entries-stmt-btn').addEventListener('click', function () {
       global.App.openStatement(global.App.state.currentSetId);
     });
@@ -196,7 +198,7 @@
 
   // ---- 条目行（含左滑删除）----
   function entryRow(e) {
-    var fen = M.amountFen(e.qty_ml, e.price_fen);
+    var fen = M.entryFen(e);
     var row = document.createElement('div');
     row.className = 'entry-row';
     var main = layout === 'date' ? vehicleHtml(e.vehicle) : U.esc(U.longDate(e.date));
@@ -225,7 +227,7 @@
 
   // ---- 条目详情（覆盖页）----
   function openDetail(e) {
-    var fen = M.amountFen(e.qty_ml, e.price_fen);
+    var fen = M.entryFen(e);
     var overlay = document.createElement('div');
     overlay.className = 'page-overlay';
     overlay.innerHTML =
@@ -236,6 +238,7 @@
         field('数量（升）', M.fmtMl(e.qty_ml)) +
         field('单价（元/升）', M.fmtFen(e.price_fen)) +
         field('金额（元）', M.fmtFen(fen)) +
+        (e.amount_fen != null ? '<div class="detail-row"><span class="detail-k"></span><span class="detail-v manual-note">手动调整</span></div>' : '') +
         field('备注', U.esc(e.note || '—')) +
       '</div>' +
       '<div class="detail-actions">' +
@@ -277,7 +280,9 @@
         '<label class="form-label">单价（元/升）</label><input class="text-input" id="f-price" type="text" inputmode="decimal" value="' + M.fmtFen(entry.price_fen) + '">' +
         '<label class="form-label">加油车辆</label><div class="vehicle-wrap"><input class="text-input" id="f-vehicle" type="text" maxlength="30" autocomplete="off" value="' + U.esc(entry.vehicle) + '"></div>' +
         '<label class="form-label">备注（可选）</label><input class="text-input" id="f-note" type="text" maxlength="60" value="' + U.esc(entry.note || '') + '">' +
-        '<div class="amt-preview">金额：<b id="f-amt">¥' + M.fmtFen(M.amountFen(entry.qty_ml, entry.price_fen)) + '</b></div>' +
+        '<label class="form-label">金额（自动计算，可手动改）</label>' +
+        '<input class="text-input amt-input" id="f-amt" type="text" inputmode="decimal" value="' + M.fmtFen(M.entryFen(entry)) + '">' +
+        '<div class="amt-hint" id="f-amt-hint"' + (entry.amount_fen != null ? '' : ' hidden') + '>手动金额，清空可恢复自动计算</div>' +
       '</div>' +
       '<div class="detail-actions"><button class="btn btn-primary btn-block" id="f-save">保存</button></div>';
     document.body.appendChild(overlay);
@@ -286,12 +291,25 @@
     var qtyEl = overlay.querySelector('#f-qty');
     var priceEl = overlay.querySelector('#f-price');
     var amtEl = overlay.querySelector('#f-amt');
+    var hintEl = overlay.querySelector('#f-amt-hint');
+    var amtManual = entry.amount_fen != null; // 有手动金额的条目回填即为手动态
     function updateAmt() {
+      if (amtManual) return;
       var q = M.parseQtyMl(qtyEl.value), p = M.parsePriceFen(priceEl.value);
-      amtEl.textContent = (q != null && p != null) ? '¥' + M.fmtFen(M.amountFen(q, p)) : '—';
+      amtEl.value = (q != null && p != null) ? M.fmtFen(M.amountFen(q, p)) : '';
     }
     qtyEl.addEventListener('input', updateAmt);
     priceEl.addEventListener('input', updateAmt);
+    amtEl.addEventListener('input', function () {
+      if (amtEl.value.trim() === '') {
+        amtManual = false;
+        hintEl.hidden = true;
+        updateAmt();
+      } else {
+        amtManual = true;
+        hintEl.hidden = false;
+      }
+    });
 
     var setEl = overlay.querySelector('#f-set');
     var vehicleEl = overlay.querySelector('#f-vehicle');
@@ -312,6 +330,12 @@
 
       var updated = { id: entry.id, set_id: setId, date: date, vehicle: vehicle,
         qty_ml: qty, price_fen: price, note: note, created_at: entry.created_at };
+      if (amtManual) {
+        updated.amount_fen = M.parsePriceFen(amtEl.value);
+        if (updated.amount_fen == null) { U.toast('金额需为数字，最多两位小数'); return; }
+      } else {
+        updated.amount_fen = null; // 自动态清除手动金额字段
+      }
 
       function doSave() {
         DB.updateEntry(updated).then(function () {

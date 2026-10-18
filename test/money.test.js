@@ -56,5 +56,19 @@ var rows2 = [{ qty_ml: 663000, price_fen: 690 }];
 eq(M.fmtMl(6435000), '6435', '合计升数 6435');
 eq(M.fmtFen(4290450), '42904.50', '合计金额 42904.50');
 
+// entryFen：手动金额优先 / 无手动走自动
+eq(M.entryFen({ qty_ml: 663000, price_fen: 690 }), 457470, 'entryFen 自动计算');
+eq(M.entryFen({ qty_ml: 663000, price_fen: 690, amount_fen: 457400 }), 457400, 'entryFen 手动金额优先');
+eq(M.entryFen({ qty_ml: 663000, price_fen: 690, amount_fen: 0 }), 0, 'entryFen 手动 0 也合法');
+eq(M.entryFen({ qty_ml: 663000, price_fen: 690, amount_fen: null }), 457470, 'entryFen null 走自动');
+// 抹零场景：663 升 × 6.90 = 4574.70 手动改 4574.00，组头/对账单合计都按手动值
+var rows3 = [
+  { qty_ml: 663000, price_fen: 690, amount_fen: 457400 },
+  { qty_ml: 115000, price_fen: 690 },
+  { qty_ml: 100000, price_fen: 700, amount_fen: 65000 }
+];
+eq(M.totals(rows3).fen, 457400 + 79350 + 65000, '含手动金额的合计先累加再格式化');
+eq(M.fmtFen(M.totals(rows3).fen), '6017.50', '抹零场景合计金额');
+
 console.log(fail === 0 ? '\n全部通过 (' + n + ' 条)' : '\n失败 ' + fail + '/' + n);
 process.exit(fail ? 1 : 0);
